@@ -9,6 +9,7 @@ import AdminQuizzesScreen from '../screens/admin/AdminQuizzesScreen';
 import AdminStudentsScreen from '../screens/admin/AdminStudentsScreen';
 import AdminAnalyticsScreen from '../screens/admin/AdminAnalyticsScreen';
 import AdminStaffScreen from '../screens/admin/AdminStaffScreen';
+import AdminAILabScreen from '../screens/admin/AdminAILabScreen';
 import StudentNotesScreen from '../screens/student/StudentNotesScreen';
 import AIChatScreen from '../screens/student/AIChatScreen';
 import StudentHomeScreen from '../screens/student/StudentHomeScreen';
@@ -20,6 +21,12 @@ import LeaderboardScreen from '../screens/student/LeaderboardScreen';
 import StudentCertificatesScreen from '../screens/student/StudentCertificatesScreen';
 import StudentNotificationsScreen from '../screens/student/StudentNotificationsScreen';
 import StudentBookmarksScreen from '../screens/student/StudentBookmarksScreen';
+import StudentSpeakingScreen from '../screens/student/StudentSpeakingScreen';
+import PersonalizedLearningScreen from '../screens/student/PersonalizedLearningScreen';
+import AdaptiveTestScreen from '../screens/student/AdaptiveTestScreen';
+import FlashcardsScreen from '../screens/student/FlashcardsScreen';
+import InterviewPrepScreen from '../screens/student/InterviewPrepScreen';
+import CommunityScreen from '../screens/student/CommunityScreen';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {api} from '../services/api';
 import {colors} from '../theme';
@@ -28,8 +35,8 @@ const adminRoles = ['root_admin','admin','content_admin','instructor','support_a
 
 function Nav({route,setRoute,logout,admin,root}){
  const items=admin
-  ? [['home','Dashboard'],['courses','Courses'],['questions','Question Bank'],['quizzes','Test Series'],['students','Students'],['analytics','Analytics'],...(root?[['staff','Admin & Staff']]:[])]
-  : [['home','Home'],['progress','My Learning'],['analytics','Analytics'],['bookmarks','Bookmarks'],['leaderboard','Leaderboard'],['certificates','Certificates'],['ai','AI Tutor'],['notes','Notes'],['notifications','🔔']];
+  ? [['home','Dashboard'],['courses','Courses'],['questions','Question Bank'],['quizzes','Test Series'],['ai-lab','AI Lab'],['students','Students'],['analytics','Analytics'],...(root?[['staff','Admin & Staff']]:[])]
+  : [['home','Home'],['progress','My Learning'],['plan','Learning Plan'],['flashcards','Flashcards'],['analytics','Analytics'],['bookmarks','Bookmarks'],['leaderboard','Leaderboard'],['certificates','Certificates'],['ai','AI Tutor'],['speaking','Speaking'],['interview','Interview'],['community','Community'],['notes','Notes'],['notifications','🔔']];
  const active=route.startsWith('course:')?'courses':route.startsWith('quiz:')?'home':route;
  return <View style={{backgroundColor:'#fff',borderBottomWidth:1,borderBottomColor:colors.border}}>
   <View style={{maxWidth:1320,width:'100%',alignSelf:'center',paddingHorizontal:22,paddingVertical:13,flexDirection:'row',alignItems:'center',gap:8,flexWrap:'wrap'}}>
@@ -56,6 +63,7 @@ export default function AppNavigator(){
   else if(route==='questions') page=<AdminQuestionsScreen/>;
   else if(route==='quizzes') page=<AdminQuizzesScreen/>;
   else if(route==='students') page=<AdminStudentsScreen/>;
+  else if(route==='ai-lab') page=<AdminAILabScreen/>;
   else if(route==='analytics') page=<AdminAnalyticsScreen/>;
   else if(route==='staff' && isRoot) page=<AdminStaffScreen/>;
   else page=<AdminHomeScreen navigate={setRoute}/>;
@@ -63,6 +71,11 @@ export default function AppNavigator(){
  }
  if(route.startsWith('course:'))return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentCourseScreen courseId={route.split(':')[1]} onBack={()=>setRoute('home')} openQuiz={id=>setRoute(`quiz:${id}`)}/></ErrorBoundary>;
  if(route.startsWith('quiz:'))return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentQuizScreen quizId={route.split(':')[1]} onBack={()=>setRoute('home')}/></ErrorBoundary>;
+ if(route==='plan')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><PersonalizedLearningScreen openCourse={id=>setRoute(`course:${id}`)} openAdaptive={()=>setRoute('adaptive')}/></ErrorBoundary>;
+ if(route==='adaptive')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><AdaptiveTestScreen/></ErrorBoundary>;
+ if(route==='flashcards')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><FlashcardsScreen/></ErrorBoundary>;
+ if(route==='interview')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><InterviewPrepScreen/></ErrorBoundary>;
+ if(route==='community')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><CommunityScreen/></ErrorBoundary>;
  if(route==='progress')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentProgressScreen/></ErrorBoundary>;
  if(route==='analytics')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentAnalyticsScreen/></ErrorBoundary>;
  if(route==='bookmarks')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentBookmarksScreen/></ErrorBoundary>;
@@ -70,6 +83,7 @@ export default function AppNavigator(){
  if(route==='certificates')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentCertificatesScreen/></ErrorBoundary>;
  if(route==='notifications')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentNotificationsScreen/></ErrorBoundary>;
  if(route==='notes')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentNotesScreen/></ErrorBoundary>;
+ if(route==='speaking')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentSpeakingScreen/></ErrorBoundary>;
  if(route==='ai')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><AIChatScreen/></ErrorBoundary>;
  return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentHomeScreen user={user} onLogout={logout} openCourse={id=>setRoute(`course:${id}`)} openQuiz={id=>setRoute(`quiz:${id}`)}/></ErrorBoundary>;
 }

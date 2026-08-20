@@ -6,9 +6,10 @@ import {colors} from '../../theme';
 
 export default function StudentAnalyticsScreen() {
   const [data, setData] = useState(null);
+  const [advanced, setAdvanced] = useState(null);
   const [error, setError] = useState('');
   const load = async () => {
-    try { setError(''); setData(await api.analytics()); }
+    try { setError(''); const [basic,adv] = await Promise.all([api.analytics(),api.advancedAnalytics()]); setData(basic); setAdvanced(adv); }
     catch (e) { setError(e.message); }
   };
   useEffect(() => { load(); }, []);
@@ -29,6 +30,7 @@ export default function StudentAnalyticsScreen() {
     <View style={{flexDirection:'row',flexWrap:'wrap',gap:12}}>
       {stats.map(([label,value]) => <Card key={label} style={{flex:1,minWidth:180}}><Text style={{fontSize:12,color:colors.muted,fontWeight:'800'}}>{label}</Text><Text style={{fontSize:25,fontWeight:'900',color:colors.navy,marginTop:7}}>{value}</Text></Card>)}
     </View>
+    {advanced && <Card><Text style={{fontSize:19,fontWeight:'900',color:colors.navy}}>Advanced learning analytics</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:10,marginTop:12}}>{[['Courses',advanced.courses_enrolled],['Lessons',advanced.lessons_completed],['Tests',advanced.tests_taken],['Average',`${advanced.average_score}%`]].map(([l,v])=><View key={l} style={{padding:12,backgroundColor:'#F8FAFC',borderRadius:12,minWidth:110}}><Text style={{fontSize:11,color:colors.muted,fontWeight:'800'}}>{l}</Text><Text style={{fontSize:20,fontWeight:'900',color:colors.navy,marginTop:3}}>{v}</Text></View>)}</View></Card>}
     <Card style={{backgroundColor:colors.navy,borderColor:colors.navy}}>
       <Text style={{color:'#fff',fontSize:20,fontWeight:'900'}}>🔥 Learning streak</Text>
       <Text style={{color:'#CBD5E1',marginTop:7}}>Keep learning every day to grow your streak.</Text>
