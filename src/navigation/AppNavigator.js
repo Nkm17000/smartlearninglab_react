@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {Pressable,Text,View} from 'react-native';
+import {Text,View} from 'react-native';
 import LoginScreen from '../screens/LoginScreen';
 import AdminHomeScreen from '../screens/admin/AdminHomeScreen';
 import AdminCoursesScreen from '../screens/admin/AdminCoursesScreen';
@@ -30,23 +30,9 @@ import CommunityScreen from '../screens/student/CommunityScreen';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {api} from '../services/api';
 import {colors} from '../theme';
+import HybridNavigation from './HybridNavigation';
 
 const adminRoles = ['root_admin','admin','content_admin','instructor','support_admin'];
-
-function Nav({route,setRoute,logout,admin,root}){
- const items=admin
-  ? [['home','Dashboard'],['courses','Courses'],['questions','Question Bank'],['quizzes','Test Series'],['ai-lab','AI Studio'],['students','Students'],['analytics','Analytics'],...(root?[['staff','Admin & Staff']]:[])]
-  : [['home','Home'],['progress','My Learning'],['plan','For You'],['flashcards','Flashcards'],['analytics','Analytics'],['bookmarks','Bookmarks'],['leaderboard','Leaderboard'],['certificates','Certificates'],['ai','AI Tutor'],['speaking','Speaking'],['interview','Interview'],['community','Community'],['notes','Notes'],['notifications','🔔']];
- const active=route.startsWith('course:')?'courses':route.startsWith('quiz:')?'home':route;
- return <View style={{backgroundColor:'#fff',borderBottomWidth:1,borderBottomColor:colors.border}}>
-  <View style={{maxWidth:1320,width:'100%',alignSelf:'center',paddingHorizontal:22,paddingVertical:13,flexDirection:'row',alignItems:'center',gap:8,flexWrap:'wrap'}}>
-   <Pressable onPress={()=>setRoute('home')} style={{marginRight:12,minWidth:190}}><Text style={{fontSize:21,fontWeight:'900',color:colors.navy}}>Smart <Text style={{color:colors.primary}}>Learning Lab</Text></Text><Text style={{fontSize:9,color:colors.muted,fontWeight:'800',letterSpacing:1}}>LEARN • PRACTICE • GROW</Text></Pressable>
-   {items.map(([r,l])=><Pressable key={r} onPress={()=>setRoute(r)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:9,backgroundColor:active===r?colors.blueSoft:'#fff'}}><Text style={{fontWeight:'800',fontSize:12,color:active===r?colors.primary:colors.text}}>{l}</Text></Pressable>)}
-   <View style={{flex:1}}/><View style={{paddingHorizontal:11,paddingVertical:9,borderRadius:9,backgroundColor:'#F9FAFB'}}><Text style={{fontSize:11,color:colors.muted,fontWeight:'700'}}>{root?'ROOT ADMIN':admin?'ADMIN':'STUDENT'}</Text></View>
-   <Pressable onPress={logout} style={{paddingHorizontal:14,paddingVertical:10,borderRadius:9,backgroundColor:'#FFF1F2'}}><Text style={{fontWeight:'800',color:colors.danger}}>Logout</Text></Pressable>
-  </View>
- </View>;
-}
 
 export default function AppNavigator(){
  const [user,setUser]=useState(undefined),[route,setRoute]=useState('home');
@@ -55,8 +41,8 @@ export default function AppNavigator(){
  if(!user)return <ErrorBoundary><LoginScreen onLoggedIn={u=>{setUser(u);setRoute('home')}}/></ErrorBoundary>;
  const isAdmin=adminRoles.includes(user.role), isRoot=user.role==='root_admin';
  const logout=async()=>{await api.logout();setUser(null);setRoute('home')};
+ let page;
  if(isAdmin){
-  let page;
   if(route==='home') page=<AdminHomeScreen navigate={setRoute}/>;
   else if(route==='courses') page=<AdminCoursesScreen openCourse={id=>setRoute(`course:${id}`)}/>;
   else if(route.startsWith('course:')) page=<AdminCourseBuilderScreen courseId={route.split(':')[1]} onBack={()=>setRoute('courses')}/>;
@@ -67,23 +53,24 @@ export default function AppNavigator(){
   else if(route==='analytics') page=<AdminAnalyticsScreen/>;
   else if(route==='staff' && isRoot) page=<AdminStaffScreen/>;
   else page=<AdminHomeScreen navigate={setRoute}/>;
-  return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout} admin root={isRoot}/><View style={{flex:1,backgroundColor:colors.background}}>{page}</View></ErrorBoundary>;
+  return <ErrorBoundary><HybridNavigation route={route} setRoute={setRoute} logout={logout} admin root={isRoot}>{page}</HybridNavigation></ErrorBoundary>;
  }
- if(route.startsWith('course:'))return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentCourseScreen courseId={route.split(':')[1]} onBack={()=>setRoute('home')} openQuiz={id=>setRoute(`quiz:${id}`)}/></ErrorBoundary>;
- if(route.startsWith('quiz:'))return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentQuizScreen quizId={route.split(':')[1]} onBack={()=>setRoute('home')}/></ErrorBoundary>;
- if(route==='plan')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><PersonalizedLearningScreen openCourse={id=>setRoute(`course:${id}`)} openAdaptive={()=>setRoute('adaptive')}/></ErrorBoundary>;
- if(route==='adaptive')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><AdaptiveTestScreen/></ErrorBoundary>;
- if(route==='flashcards')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><FlashcardsScreen/></ErrorBoundary>;
- if(route==='interview')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><InterviewPrepScreen/></ErrorBoundary>;
- if(route==='community')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><CommunityScreen/></ErrorBoundary>;
- if(route==='progress')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentProgressScreen/></ErrorBoundary>;
- if(route==='analytics')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentAnalyticsScreen/></ErrorBoundary>;
- if(route==='bookmarks')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentBookmarksScreen/></ErrorBoundary>;
- if(route==='leaderboard')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><LeaderboardScreen/></ErrorBoundary>;
- if(route==='certificates')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentCertificatesScreen/></ErrorBoundary>;
- if(route==='notifications')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentNotificationsScreen/></ErrorBoundary>;
- if(route==='notes')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentNotesScreen/></ErrorBoundary>;
- if(route==='speaking')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentSpeakingScreen/></ErrorBoundary>;
- if(route==='ai')return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><AIChatScreen/></ErrorBoundary>;
- return <ErrorBoundary><Nav route={route} setRoute={setRoute} logout={logout}/><StudentHomeScreen user={user} onLogout={logout} openCourse={id=>setRoute(`course:${id}`)} openQuiz={id=>setRoute(`quiz:${id}`)}/></ErrorBoundary>;
+ if(route.startsWith('course:')) page=<StudentCourseScreen courseId={route.split(':')[1]} onBack={()=>setRoute('home')} openQuiz={id=>setRoute(`quiz:${id}`)}/>;
+ else if(route.startsWith('quiz:')) page=<StudentQuizScreen quizId={route.split(':')[1]} onBack={()=>setRoute('home')}/>;
+ else if(route==='plan') page=<PersonalizedLearningScreen openCourse={id=>setRoute(`course:${id}`)} openAdaptive={()=>setRoute('adaptive')}/>;
+ else if(route==='adaptive') page=<AdaptiveTestScreen/>;
+ else if(route==='flashcards') page=<FlashcardsScreen/>;
+ else if(route==='interview') page=<InterviewPrepScreen/>;
+ else if(route==='community') page=<CommunityScreen/>;
+ else if(route==='progress') page=<StudentProgressScreen/>;
+ else if(route==='analytics') page=<StudentAnalyticsScreen/>;
+ else if(route==='bookmarks') page=<StudentBookmarksScreen/>;
+ else if(route==='leaderboard') page=<LeaderboardScreen/>;
+ else if(route==='certificates') page=<StudentCertificatesScreen/>;
+ else if(route==='notifications') page=<StudentNotificationsScreen/>;
+ else if(route==='notes') page=<StudentNotesScreen/>;
+ else if(route==='speaking') page=<StudentSpeakingScreen/>;
+ else if(route==='ai') page=<AIChatScreen/>;
+ else page=<StudentHomeScreen user={user} onLogout={logout} openCourse={id=>setRoute(`course:${id}`)} openQuiz={id=>setRoute(`quiz:${id}`)}/>;
+ return <ErrorBoundary><HybridNavigation route={route} setRoute={setRoute} logout={logout}>{page}</HybridNavigation></ErrorBoundary>;
 }

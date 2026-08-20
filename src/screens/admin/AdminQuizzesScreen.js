@@ -59,7 +59,7 @@ export default function AdminQuizzesScreen(){
      .catch(e=>setError(e.message));
  };
 
- useEffect(load,[]);
+ useEffect(()=>{load()},[]);
 
  const create=async()=>{
    try{

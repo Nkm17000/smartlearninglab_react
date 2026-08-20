@@ -9,25 +9,15 @@ async function request(path, options={}){
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),20000);
   let response;
-  try{
-    for(let attempt=0;attempt<2;attempt++){
-      try{
-        response=await fetch(`${BASE_URL}${path}`,{...options,headers,signal:controller.signal});
-        if([502,503,504].includes(response.status)&&attempt===0){await new Promise(r=>setTimeout(r,650));continue;}
-        break;
-      }catch(e){
-        if(e?.name==='AbortError')throw new Error('Backend request timed out. Check FastAPI and MongoDB.');
-        if(attempt===0){await new Promise(r=>setTimeout(r,350));continue;}
-        throw new Error(`Cannot reach backend at ${BASE_URL}. ${e?.message||''}`);
-      }
-    }
-  } finally {clearTimeout(timeout)}
+  try{response=await fetch(`${BASE_URL}${path}`,{...options,headers,signal:controller.signal});}
+  catch(e){if(e?.name==='AbortError')throw new Error('Backend request timed out. Check FastAPI.');throw new Error(`Cannot reach backend at ${BASE_URL}. ${e?.message||''}`);}
+  finally{clearTimeout(timeout)}
   const raw=await response.text(); let data=null; try{data=raw?JSON.parse(raw):null}catch{data=raw}
   if(!response.ok){let m=data?.detail||data?.message||(typeof data==='string'?data:`Request failed (${response.status})`);if(Array.isArray(m))m=m.map(x=>x.msg||String(x)).join(', ');throw new Error(m)}
   return data;
 }
 const idOf=x=>String(x?._id??x?.id??'');
-const listOf=x=>{if(Array.isArray(x))return x;if(Array.isArray(x?.items))return x.items;if(Array.isArray(x?.data))return x.data;if(Array.isArray(x?.results))return x.results;return [];};
+const listOf=x=>Array.isArray(x)?x:(x?.items||x?.data||[]);
 
 export const api={
  idOf,listOf,
