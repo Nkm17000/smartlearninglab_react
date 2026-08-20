@@ -6,7 +6,7 @@ import {colors} from '../../theme';
 
 export default function StudentQuizScreen({quizId,onBack}){
  const [quiz,setQuiz]=useState(null),[questions,setQuestions]=useState([]),[answers,setAnswers]=useState({}),[attempt,setAttempt]=useState(null),[result,setResult]=useState(null),[error,setError]=useState('');
- const load=async()=>{try{setError('');const [q,qs]=await Promise.all([api.studentQuiz(quizId),api.quizQuestions(quizId)]);setQuiz(q);setQuestions(api.listOf(qs))}catch(e){setError(e.message)}};
+ const load=async()=>{try{setError('');const r=await Promise.allSettled([api.studentQuiz(quizId),api.quizQuestions(quizId)]);if(r[0].status!=='fulfilled')throw r[0].reason||new Error('Quiz could not be loaded.');setQuiz(r[0].value);setQuestions(r[1].status==='fulfilled'?api.listOf(r[1].value):[])}catch(e){setError(e.message)}};
  useEffect(()=>{load()},[quizId]);
  if(error)return <AppShell><ErrorState title="Quiz could not load" message={error} onRetry={load}/></AppShell>;
  if(!quiz)return <AppShell><Loading label="Opening quiz…"/></AppShell>;

@@ -1,13 +1,14 @@
 import React,{useEffect,useState} from 'react';
 import {Alert,Text,View} from 'react-native';
-import {AppShell,Button,Card,Header,Loading,Badge} from '../../components/UI';
+import {AppShell,Button,Card,Header,Loading,Badge,ErrorState} from '../../components/UI';
 import {api} from '../../services/api';
 import {colors} from '../../theme';
 export default function PersonalizedLearningScreen({openCourse,openAdaptive}){
- const [path,setPath]=useState(null),[adaptive,setAdaptive]=useState(null),[busy,setBusy]=useState(false);
- const load=async()=>{try{setPath(await api.personalizedPath())}catch(e){Alert.alert('Learning plan',e.message)}};
+ const [path,setPath]=useState(null),[adaptive,setAdaptive]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
+ const load=async()=>{try{setError('');setPath(null);setPath(await api.personalizedPath())}catch(e){setError(e.message)}};
  useEffect(()=>{load()},[]);
  const startAdaptive=async()=>{setBusy(true);try{setAdaptive(await api.adaptiveTest({count:10}))}catch(e){Alert.alert('Adaptive test',e.message)}finally{setBusy(false)}};
+ if(error)return <AppShell><Header title="Personalized Learning" subtitle="Your next best lessons and adaptive practice"/><ErrorState title="Learning plan could not load" message={error} onRetry={load}/></AppShell>;
  if(!path)return <AppShell><Header title="Personalized Learning" subtitle="Your next best lessons and adaptive practice"/><Loading/></AppShell>;
  return <AppShell><Header eyebrow="For you" title="Your Learning Plan" subtitle="Recommendations are based on your progress and recent assessment performance."/>
   <Card><View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><View><Text style={{fontSize:20,fontWeight:'900',color:colors.navy}}>Today's goal</Text><Text style={{color:colors.muted,marginTop:4}}>{path.daily_goal_minutes} minutes of focused learning</Text></View><Badge tone="green">Personalized</Badge></View></Card>

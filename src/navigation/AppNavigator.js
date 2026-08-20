@@ -35,13 +35,13 @@ const adminRoles = ['root_admin','admin','content_admin','instructor','support_a
 
 function Nav({route,setRoute,logout,admin,root}){
  const items=admin
-  ? [['home','Dashboard'],['courses','Courses'],['questions','Question Bank'],['quizzes','Test Series'],['ai-lab','AI Lab'],['students','Students'],['analytics','Analytics'],...(root?[['staff','Admin & Staff']]:[])]
-  : [['home','Home'],['progress','My Learning'],['plan','Learning Plan'],['flashcards','Flashcards'],['analytics','Analytics'],['bookmarks','Bookmarks'],['leaderboard','Leaderboard'],['certificates','Certificates'],['ai','AI Tutor'],['speaking','Speaking'],['interview','Interview'],['community','Community'],['notes','Notes'],['notifications','🔔']];
+  ? [['home','Dashboard'],['courses','Courses'],['questions','Question Bank'],['quizzes','Test Series'],['ai-lab','AI Studio'],['students','Students'],['analytics','Analytics'],...(root?[['staff','Admin & Staff']]:[])]
+  : [['home','Home'],['progress','My Learning'],['plan','For You'],['flashcards','Flashcards'],['analytics','Analytics'],['bookmarks','Bookmarks'],['leaderboard','Leaderboard'],['certificates','Certificates'],['ai','AI Tutor'],['speaking','Speaking'],['interview','Interview'],['community','Community'],['notes','Notes'],['notifications','🔔']];
  const active=route.startsWith('course:')?'courses':route.startsWith('quiz:')?'home':route;
  return <View style={{backgroundColor:'#fff',borderBottomWidth:1,borderBottomColor:colors.border}}>
   <View style={{maxWidth:1320,width:'100%',alignSelf:'center',paddingHorizontal:22,paddingVertical:13,flexDirection:'row',alignItems:'center',gap:8,flexWrap:'wrap'}}>
    <Pressable onPress={()=>setRoute('home')} style={{marginRight:12,minWidth:190}}><Text style={{fontSize:21,fontWeight:'900',color:colors.navy}}>Smart <Text style={{color:colors.primary}}>Learning Lab</Text></Text><Text style={{fontSize:9,color:colors.muted,fontWeight:'800',letterSpacing:1}}>LEARN • PRACTICE • GROW</Text></Pressable>
-   {items.map(([r,l])=><Pressable key={r} onPress={()=>setRoute(r)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:9,backgroundColor:active===r?colors.pinkSoft:'#fff'}}><Text style={{fontWeight:'800',fontSize:12,color:active===r?colors.primary:colors.text}}>{l}</Text></Pressable>)}
+   {items.map(([r,l])=><Pressable key={r} onPress={()=>setRoute(r)} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:9,backgroundColor:active===r?colors.blueSoft:'#fff'}}><Text style={{fontWeight:'800',fontSize:12,color:active===r?colors.primary:colors.text}}>{l}</Text></Pressable>)}
    <View style={{flex:1}}/><View style={{paddingHorizontal:11,paddingVertical:9,borderRadius:9,backgroundColor:'#F9FAFB'}}><Text style={{fontSize:11,color:colors.muted,fontWeight:'700'}}>{root?'ROOT ADMIN':admin?'ADMIN':'STUDENT'}</Text></View>
    <Pressable onPress={logout} style={{paddingHorizontal:14,paddingVertical:10,borderRadius:9,backgroundColor:'#FFF1F2'}}><Text style={{fontWeight:'800',color:colors.danger}}>Logout</Text></Pressable>
   </View>
