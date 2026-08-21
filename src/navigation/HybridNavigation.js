@@ -10,8 +10,8 @@ export default function HybridNavigation({route,setRoute,logout,admin=false,root
   const [drawer,setDrawer] = useState(false);
 
   const top = admin
-    ? [['home','⌂','Dashboard'],['courses','▣','Courses'],['quizzes','✓','Test Series'],['ai-lab','✦','AI Lab'],['students','♙','Students']]
-    : [['home','⌂','Home'],['courses','▣','Courses'],['progress','◉','My Learning'],['ai','✦','AI Tutor'],['flashcards','▤','Flashcards']];
+    ? [['home','⌂','Dashboard'],['courses','▣','Courses'],['quizzes','✓','Test Series'],['ai-lab','✦','AI Lab'],['intelligence','🧠','AI Intelligence'],['students','♙','Students']]
+    : [['home','⌂','Home'],['courses','▣','Courses'],['progress','◉','My Learning'],['studio','🧠','AI Studio'],['ai','✦','AI Tutor'],['flashcards','▤','Flashcards']];
 
   const side = admin
     ? [['questions','Question Bank','Questions and content'],['analytics','Analytics','Platform performance'],...(root?[['staff','Admin & Staff','Manage administrators']]:[])]

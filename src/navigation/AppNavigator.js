@@ -27,6 +27,8 @@ import AdaptiveTestScreen from '../screens/student/AdaptiveTestScreen';
 import FlashcardsScreen from '../screens/student/FlashcardsScreen';
 import InterviewPrepScreen from '../screens/student/InterviewPrepScreen';
 import CommunityScreen from '../screens/student/CommunityScreen';
+import AIStudioScreen from '../screens/student/AIStudioScreen';
+import AdminIntelligenceScreen from '../screens/admin/AdminIntelligenceScreen';
 import ErrorBoundary from '../components/ErrorBoundary';
 import {api} from '../services/api';
 import {colors} from '../theme';
@@ -50,6 +52,7 @@ export default function AppNavigator(){
   else if(route==='quizzes') page=<AdminQuizzesScreen/>;
   else if(route==='students') page=<AdminStudentsScreen/>;
   else if(route==='ai-lab') page=<AdminAILabScreen/>;
+  else if(route==='intelligence') page=<AdminIntelligenceScreen navigate={setRoute}/>;
   else if(route==='analytics') page=<AdminAnalyticsScreen/>;
   else if(route==='staff' && isRoot) page=<AdminStaffScreen/>;
   else page=<AdminHomeScreen navigate={setRoute}/>;
@@ -71,6 +74,7 @@ export default function AppNavigator(){
  else if(route==='notes') page=<StudentNotesScreen/>;
  else if(route==='speaking') page=<StudentSpeakingScreen/>;
  else if(route==='ai') page=<AIChatScreen/>;
+ else if(route==='studio') page=<AIStudioScreen/>;
  else page=<StudentHomeScreen user={user} onLogout={logout} openCourse={id=>setRoute(`course:${id}`)} openQuiz={id=>setRoute(`quiz:${id}`)}/>;
  return <ErrorBoundary><HybridNavigation route={route} setRoute={setRoute} logout={logout}>{page}</HybridNavigation></ErrorBoundary>;
 }
