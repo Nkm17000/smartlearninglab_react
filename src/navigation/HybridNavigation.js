@@ -24,25 +24,60 @@ export default function HybridNavigation({route,setRoute,logout,admin=false,root
 
   return <View style={{flex:1,backgroundColor:colors.background}}>
     <View style={{backgroundColor:'#fff',borderBottomWidth:1,borderBottomColor:colors.border,zIndex:10}}>
-      <View style={{maxWidth:1440,width:'100%',alignSelf:'center',paddingHorizontal:20,paddingVertical:10,flexDirection:'row',alignItems:'center',gap:10}}>
-        {compact && <Pressable onPress={()=>setDrawer(true)} style={{width:42,height:42,borderRadius:12,backgroundColor:colors.blueSoft,alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:22,color:colors.navy}}>☰</Text></Pressable>}
-        <Pressable onPress={()=>go('home')} style={{width:compact?155:215}}>
-          <View style={{flexDirection:'row',alignItems:'center',gap:8}}>
-            <View style={{width:34,height:34,borderRadius:11,backgroundColor:colors.purpleSoft,alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:19}}>📚</Text></View>
-            <View>
-              <Text style={{fontFamily:colors.fontFamily,fontSize:17,fontWeight:'900',color:colors.navy}}>Smart <Text style={{color:colors.primary}}>Learning Lab</Text></Text>
-              {!compact && <Text style={{fontFamily:colors.fontFamily,fontSize:8,color:colors.muted,fontWeight:'900',letterSpacing:1}}>LEARN • PRACTICE • GROW</Text>}
+      {compact ? (
+        <>
+          <View style={{width:'100%',paddingHorizontal:10,paddingVertical:8,flexDirection:'row',alignItems:'center',gap:8}}>
+            <Pressable onPress={()=>setDrawer(true)} style={{width:42,height:42,borderRadius:12,backgroundColor:colors.blueSoft,alignItems:'center',justifyContent:'center'}}>
+              <Text style={{fontSize:22,color:colors.navy}}>☰</Text>
+            </Pressable>
+            <Pressable onPress={()=>go('home')} style={{flex:1,minWidth:0}}>
+              <View style={{flexDirection:'row',alignItems:'center',gap:7}}>
+                <View style={{width:34,height:34,borderRadius:11,backgroundColor:colors.purpleSoft,alignItems:'center',justifyContent:'center'}}>
+                  <Text style={{fontSize:19}}>📚</Text>
+                </View>
+                <Text numberOfLines={1} style={{fontFamily:colors.fontFamily,fontSize:16,fontWeight:'900',color:colors.navy}}>Smart <Text style={{color:colors.primary}}>Learning Lab</Text></Text>
+              </View>
+            </Pressable>
+            {!admin && <Pressable onPress={()=>go('notifications')} style={{width:38,height:38,borderRadius:12,alignItems:'center',justifyContent:'center'}}>
+              <Text style={{fontSize:19}}>♧</Text>
+            </Pressable>}
+            <View style={{width:38,height:38,borderRadius:19,backgroundColor:colors.blueSoft,alignItems:'center',justifyContent:'center'}}>
+              <Text style={{fontFamily:colors.fontFamily,fontWeight:'900',color:colors.primary}}>{admin?'RA':'ST'}</Text>
             </View>
           </View>
-        </Pressable>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:5,alignItems:'center',flexGrow:1}}>
-          {top.map(([r,icon,label])=><Pressable key={r} onPress={()=>go(r)} style={{flexDirection:'row',alignItems:'center',gap:5,paddingHorizontal:14,paddingVertical:10,borderRadius:12,backgroundColor:active===r?colors.blueSoft:'#fff'}}><Icon name={icon}/><Text style={{fontFamily:colors.fontFamily,fontSize:12,fontWeight:'900',color:active===r?colors.primary:colors.text}}>{label}</Text></Pressable>)}
-        </ScrollView>
-        {!admin && <Pressable onPress={()=>go('notifications')} style={{width:40,height:40,borderRadius:12,alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:20}}>♧</Text></Pressable>}
-        <View style={{width:38,height:38,borderRadius:19,backgroundColor:colors.blueSoft,alignItems:'center',justifyContent:'center'}}><Text style={{fontFamily:colors.fontFamily,fontWeight:'900',color:colors.primary}}>{admin?'RA':'ST'}</Text></View>
-        {!compact && <View style={{paddingRight:6}}><Text style={{fontFamily:colors.fontFamily,fontSize:11,fontWeight:'900',color:colors.navy}}>{root?'Root Admin':admin?'Admin':'Student'}</Text><Text style={{fontFamily:colors.fontFamily,fontSize:9,color:colors.muted}}>Account</Text></View>}
-        {!compact && <Pressable onPress={logout} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:'#FFF1F4'}}><Text style={{fontFamily:colors.fontFamily,fontWeight:'900',fontSize:12,color:colors.danger}}>Logout</Text></Pressable>}
-      </View>
+          <ScrollView
+            horizontal
+            nestedScrollEnabled
+            showsHorizontalScrollIndicator={false}
+            directionalLockEnabled
+            contentContainerStyle={{paddingHorizontal:8,gap:4,alignItems:'center',paddingBottom:8}}
+            style={{width:'100%'}}
+          >
+            {(admin ? top : [...top,['gamification','🎮','Gamification'],['mock-test','◈','Mock Test']]).map(([r,icon,label])=><Pressable key={r} onPress={()=>go(r)} style={{flexDirection:'row',alignItems:'center',gap:4,paddingHorizontal:12,paddingVertical:9,borderRadius:11,backgroundColor:active===r?colors.blueSoft:'#fff',borderWidth:active===r?0:1,borderColor:'#F0F1F7'}}>
+              <Icon name={icon}/><Text style={{fontFamily:colors.fontFamily,fontSize:11,fontWeight:'900',color:active===r?colors.primary:colors.text}}>{label}</Text>
+            </Pressable>)}
+          </ScrollView>
+        </>
+      ) : (
+        <View style={{maxWidth:1440,width:'100%',alignSelf:'center',paddingHorizontal:20,paddingVertical:10,flexDirection:'row',alignItems:'center',gap:10}}>
+          <Pressable onPress={()=>go('home')} style={{width:215}}>
+            <View style={{flexDirection:'row',alignItems:'center',gap:8}}>
+              <View style={{width:34,height:34,borderRadius:11,backgroundColor:colors.purpleSoft,alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:19}}>📚</Text></View>
+              <View>
+                <Text style={{fontFamily:colors.fontFamily,fontSize:17,fontWeight:'900',color:colors.navy}}>Smart <Text style={{color:colors.primary}}>Learning Lab</Text></Text>
+                <Text style={{fontFamily:colors.fontFamily,fontSize:8,color:colors.muted,fontWeight:'900',letterSpacing:1}}>LEARN • PRACTICE • GROW</Text>
+              </View>
+            </View>
+          </Pressable>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{gap:5,alignItems:'center',flexGrow:1}}>
+            {top.map(([r,icon,label])=><Pressable key={r} onPress={()=>go(r)} style={{flexDirection:'row',alignItems:'center',gap:5,paddingHorizontal:14,paddingVertical:10,borderRadius:12,backgroundColor:active===r?colors.blueSoft:'#fff'}}><Icon name={icon}/><Text style={{fontFamily:colors.fontFamily,fontSize:12,fontWeight:'900',color:active===r?colors.primary:colors.text}}>{label}</Text></Pressable>)}
+          </ScrollView>
+          {!admin && <Pressable onPress={()=>go('notifications')} style={{width:40,height:40,borderRadius:12,alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:20}}>♧</Text></Pressable>}
+          <View style={{width:38,height:38,borderRadius:19,backgroundColor:colors.blueSoft,alignItems:'center',justifyContent:'center'}}><Text style={{fontFamily:colors.fontFamily,fontWeight:'900',color:colors.primary}}>{admin?'RA':'ST'}</Text></View>
+          <View style={{paddingRight:6}}><Text style={{fontFamily:colors.fontFamily,fontSize:11,fontWeight:'900',color:colors.navy}}>{root?'Root Admin':admin?'Admin':'Student'}</Text><Text style={{fontFamily:colors.fontFamily,fontSize:9,color:colors.muted}}>Account</Text></View>
+          <Pressable onPress={logout} style={{paddingHorizontal:12,paddingVertical:9,borderRadius:10,backgroundColor:'#FFF1F4'}}><Text style={{fontFamily:colors.fontFamily,fontWeight:'900',fontSize:12,color:colors.danger}}>Logout</Text></Pressable>
+        </View>
+      )}
     </View>
 
     <View style={{flex:1,flexDirection:'row',maxWidth:1440,width:'100%',alignSelf:'center'}}>
