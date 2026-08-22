@@ -1,36 +1,50 @@
-# Smart Learning Lab – Final FE
+# Smart Learning Lab — Frontend
 
-Expo 54 / React Native / React Native Web frontend.
+Expo / React Native Web frontend for Smart Learning Lab.
 
-## Features
-
-- Adda247-inspired education discovery UI
-- Student registration, login, forgot password and OAuth buttons
-- Course discovery/search and exam filters
-- Course curriculum and lesson completion
-- Test series and quiz flow
-- Student progress and analytics
-- XP, streaks, leaderboard and badges
-- Bookmarks, notes, notifications and certificates
-- Course ratings/reviews
-- AI Tutor
-- Admin course builder, question bank and test series
-- Admin analytics
-- Root-admin staff management
-
-## Environment
-
-Create `.env`:
-
-```env
-EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
-```
-
-## Run
+## Local development
 
 ```powershell
 npm install
-npx expo start -c
+npx expo start --web -c
 ```
 
-Web: `http://localhost:8081`
+## Web production build
+
+```powershell
+npx expo export --platform web
+```
+
+The production web output is generated in `dist/`.
+
+## Environment
+
+Copy `.env.example` to `.env` and set the backend URL. Never commit `.env`.
+
+Example:
+
+```env
+EXPO_PUBLIC_API_URL=http://127.0.0.1:8000
+```
+
+For Render, set `EXPO_PUBLIC_API_URL` in the Static Site environment variables to the deployed backend URL.
+
+## Render
+
+Build command:
+
+```text
+npm ci && npx expo export --platform web
+```
+
+Publish directory:
+
+```text
+dist
+```
+
+For client-side routing, add this Render rewrite:
+
+```text
+/*    /index.html    Rewrite
+```
