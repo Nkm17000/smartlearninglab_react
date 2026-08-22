@@ -177,6 +177,16 @@ def create_flashcard(data:dict,user=Depends(current_user)):
     d={'_id':uuid.uuid4().hex,'user_id':uid(user),'front':data['front'],'back':data['back'],'course_id':data.get('course_id'),'ease':2.5,'interval_days':1,'repetitions':0,'due_at':now(),'created_at':now()}
     get_db().flashcards.insert_one(d); return clean(d)
 
+@router.delete('/flashcards/{card_id}')
+def delete_flashcard(card_id: str, user=Depends(current_user)):
+    db = get_db()
+    user_id = uid(user)
+    card = db.flashcards.find_one({'_id': card_id, 'user_id': user_id})
+    if not card:
+        raise HTTPException(404, 'Flashcard not found')
+    db.flashcards.delete_one({'_id': card['_id']})
+    return {'message': 'Flashcard deleted', 'id': str(card['_id'])}
+
 @router.post('/flashcards/{card_id}/review')
 def review_flashcard(card_id:str,data:dict,user=Depends(current_user)):
     db=get_db(); c=db.flashcards.find_one({'_id':card_id,'user_id':uid(user)})

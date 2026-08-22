@@ -1,183 +1,318 @@
-import React,{useEffect,useState} from 'react';
-import {Alert,Text,View} from 'react-native';
-import {AppShell,Badge,Button,Card,Empty,ErrorState,Field,Header,Loading,Select} from '../../components/UI';
-import {api} from '../../services/api';
-import {colors} from '../../theme';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Text, View } from 'react-native';
+import {
+  AppShell,
+  Badge,
+  Button,
+  Card,
+  Empty,
+  ErrorState,
+  Field,
+  Header,
+  Loading,
+} from '../../components/UI';
+import { api } from '../../services/api';
+import { colors } from '../../theme';
 
-const blank={question:'',options:['','','',''],correct_answer:0,difficulty:'easy',marks:'1',negative_marks:'0',explanation:''};
+export default function AdminQuizzesScreen() {
+  const [items, setItems] = useState([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState('');
+  const [error, setError] = useState('');
 
-function NewQuestion({onSave,onCancel}){
- const [f,setF]=useState(blank),[busy,setBusy]=useState(false);
- const save=async()=>{setBusy(true);try{await onSave({...f,marks:Number(f.marks)||1,negative_marks:Number(f.negative_marks)||0})}catch(e){Alert.alert('Question',e.message)}finally{setBusy(false)}};
- return <Card style={{marginTop:12,backgroundColor:'#F8FAFC',borderStyle:'dashed'}}>
-  <Text style={{fontSize:17,fontWeight:'900',color:colors.navy,marginBottom:10}}>New question for this quiz</Text>
-  <Field label="Question" value={f.question} onChangeText={v=>setF({...f,question:v})} multiline/>
-  {f.options.map((x,i)=><Field key={i} label={`Option ${String.fromCharCode(65+i)}`} value={x} onChangeText={v=>{const a=[...f.options];a[i]=v;setF({...f,options:a})}}/>)}
-  <Select label="Correct answer" value={f.correct_answer} onChange={v=>setF({...f,correct_answer:v})} options={[0,1,2,3].map(i=>({value:i,label:`Option ${String.fromCharCode(65+i)}`}))}/>
-  <Select label="Difficulty" value={f.difficulty} onChange={v=>setF({...f,difficulty:v})} options={[{value:'easy',label:'Easy'},{value:'medium',label:'Medium'},{value:'hard',label:'Hard'}]}/>
-  <Field label="Explanation" value={f.explanation} onChangeText={v=>setF({...f,explanation:v})} multiline/>
-  <View style={{flexDirection:'row',gap:8}}><Button title={busy?'Saving…':'Create & Add'} onPress={save} disabled={busy||!f.question.trim()||f.options.some(x=>!x.trim())}/><Button title="Cancel" variant="secondary" onPress={onCancel}/></View>
- </Card>
-}
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await api.quizzes();
+      setItems(api.listOf(response));
+    } catch (e) {
+      setError(e?.message || 'Unable to load quizzes.');
+    } finally {
+      setLoading(false);
+    }
+  };
 
-function ExistingPicker({quiz,onAdd}){
- const [open,setOpen]=useState(false),[items,setItems]=useState([]);
- const load=async()=>{const all=api.listOf(await api.questions());const used=(quiz.question_ids||[]).map(String);setItems(all.filter(q=>!used.includes(api.idOf(q))))};
- if(!open)return <Button title="+ Existing Question" variant="secondary" onPress={()=>{load();setOpen(true)}}/>;
- return <Card style={{marginTop:12,backgroundColor:'#fff'}}>
-  <View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><Text style={{fontWeight:'900'}}>Question bank</Text><Button title="Close" variant="secondary" onPress={()=>setOpen(false)}/></View>
-  {items.length===0?<Text style={{color:colors.muted,marginTop:8}}>No unused questions.</Text>:items.map(q=><View key={api.idOf(q)} style={{flexDirection:'row',alignItems:'center',gap:8,paddingVertical:8,borderTopWidth:1,borderTopColor:colors.border}}><Text style={{flex:1}} numberOfLines={2}>{q.question}</Text><Button title="Add" onPress={()=>{onAdd(api.idOf(q));setOpen(false)}}/></View>)}
- </Card>
-}
+  useEffect(() => {
+    load();
+  }, []);
 
-function QuizEditor({quiz,onReload}){
- const [showNew,setShowNew]=useState(false),[title,setTitle]=useState(quiz.title||quiz.name||''),[duration,setDuration]=useState(String(quiz.duration_minutes||15)),[passing,setPassing]=useState(String(quiz.passing_percentage||60)),[saving,setSaving]=useState(false);
- const save=async()=>{try{setSaving(true);await api.updateQuiz(api.idOf(quiz),{title,name:title,duration_minutes:Number(duration)||15,passing_percentage:Number(passing)||60});onReload()}catch(e){Alert.alert('Quiz',e.message)}finally{setSaving(false)}};
- const add=async id=>{try{await api.addQuizQuestions(api.idOf(quiz),[id]);onReload()}catch(e){Alert.alert('Question',e.message)}};
- const remove=async id=>{try{await api.removeQuizQuestion(api.idOf(quiz),id);onReload()}catch(e){Alert.alert('Question',e.message)}};
- const create=async d=>{await api.createQuizQuestion(api.idOf(quiz),d);setShowNew(false);onReload()};
- const [questions,setQuestions]=useState([]);
- useEffect(()=>{api.questions().then(x=>{const all=api.listOf(x);const ids=(quiz.question_ids||[]).map(String);setQuestions(all.filter(q=>ids.includes(api.idOf(q))))}).catch(()=>{})},[quiz.question_ids?.length]);
- return <Card style={{marginTop:12,backgroundColor:'#F8FAFC'}}>
-  <View style={{flexDirection:'row',alignItems:'center',gap:10}}><Text style={{fontSize:24}}>📝</Text><View style={{flex:1}}><Text style={{fontSize:18,fontWeight:'900',color:colors.navy}}>{quiz.title||quiz.name}</Text><Text style={{color:colors.muted}}>{(quiz.question_ids||[]).length} questions</Text></View><Badge tone={quiz.is_published?'green':'orange'}>{quiz.is_published?'Published':'Draft'}</Badge></View>
-  <View style={{marginTop:12}}><Field label="Quiz title" value={title} onChangeText={setTitle}/><View style={{flexDirection:'row',gap:10,flexWrap:'wrap'}}><View style={{flex:1,minWidth:180}}><Field label="Duration (minutes)" value={duration} onChangeText={setDuration} keyboardType="numeric"/></View><View style={{flex:1,minWidth:180}}><Field label="Passing score (%)" value={passing} onChangeText={setPassing} keyboardType="numeric"/></View></View><View style={{flexDirection:'row',gap:8,flexWrap:'wrap'}}><Button title={saving?'Saving…':'Save Quiz'} onPress={save} disabled={saving||!title.trim()}/><Button title={quiz.is_published?'Unpublish':'Publish'} variant="secondary" onPress={async()=>{try{quiz.is_published?await api.unpublishQuiz(api.idOf(quiz)):await api.publishQuiz(api.idOf(quiz));onReload()}catch(e){Alert.alert('Publish',e.message)}}}/><Button title="Delete" variant="danger" onPress={async()=>{try{await api.deleteQuiz(api.idOf(quiz));onReload()}catch(e){Alert.alert('Delete',e.message)}}}/></View></View>
-  <Text style={{fontWeight:'900',fontSize:16,color:colors.navy,marginTop:15}}>Questions in quiz</Text>
-  {questions.length===0?<Text style={{color:colors.muted,marginTop:7}}>No questions yet. Add one below.</Text>:questions.map((q,i)=><View key={api.idOf(q)} style={{flexDirection:'row',alignItems:'center',paddingVertical:9,borderTopWidth:1,borderTopColor:colors.border}}><View style={{flex:1}}><Text style={{fontWeight:'800'}}>{i+1}. {q.question}</Text><Text style={{fontSize:12,color:colors.muted}}>{q.difficulty||'easy'}</Text></View><Button title="Remove" variant="danger" onPress={()=>remove(api.idOf(q))}/></View>)}
-  <View style={{flexDirection:'row',gap:8,flexWrap:'wrap',marginTop:12}}><Button title="+ New Question" onPress={()=>setShowNew(!showNew)}/><ExistingPicker quiz={quiz} onAdd={add}/></View>
-  {showNew&&<NewQuestion onSave={create} onCancel={()=>setShowNew(false)}/>}
- </Card>
-}
+  const filtered = useMemo(() => {
+    const value = search.trim().toLowerCase();
+    if (!value) return items;
 
-export default function AdminQuizzesScreen(){
- const [items,setItems]=useState(null),[error,setError]=useState(''),[showCreate,setShowCreate]=useState(false);
- const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[duration,setDuration]=useState('15'),[passing,setPassing]=useState('60');
+    return items.filter((quiz) => {
+      const text = [
+        quiz.title,
+        quiz.name,
+        quiz.category,
+        quiz.description,
+        quiz.exam,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
 
- const load=()=>{
-   setError('');
-   api.quizzes()
-     .then(x=>setItems(api.listOf(x)))
-     .catch(e=>setError(e.message));
- };
+      return text.includes(value);
+    });
+  }, [items, search]);
 
- useEffect(()=>{load()},[]);
+  const togglePublish = async (quiz) => {
+    const id = api.idOf(quiz);
+    if (!id) return;
 
- const create=async()=>{
-   try{
-     await api.createQuiz({
-       title,
-       name:title,
-       description,
-       course_id:null,
-       module_id:null,
-       duration_minutes:Number(duration)||15,
-       passing_percentage:Number(passing)||60,
-       max_attempts:3,
-       question_ids:[],
-       is_published:false
-     });
-     setTitle('');
-     setDescription('');
-     setShowCreate(false);
-     load();
-   }catch(e){
-     Alert.alert('Quiz',e.message);
-   }
- };
+    const isPublished = quiz.is_published === true;
+    const questionCount = Array.isArray(quiz.question_ids)
+      ? quiz.question_ids.length
+      : Number(quiz.question_count || 0);
 
- if(error){
-   return (
-     <AppShell>
-       <Header
-         title="Quizzes"
-         subtitle="Create quizzes and build their question sets."
-       />
-       <ErrorState
-         title="Quizzes could not load"
-         message={error}
-         onRetry={load}
-       />
-     </AppShell>
-   );
- }
+    if (!isPublished && questionCount === 0) {
+      Alert.alert(
+        'Cannot publish quiz',
+        'Add at least one question before publishing this quiz.'
+      );
+      return;
+    }
 
- return (
-   <AppShell>
-     <Header
-       eyebrow="Admin"
-       title="Quizzes"
-       subtitle="Create a quiz, then add existing or brand-new questions inside it."
-       right={
-         <Button
-           title={showCreate ? 'Close' : '+ New Quiz'}
-           onPress={()=>setShowCreate(!showCreate)}
-         />
-       }
-     />
+    setBusyId(id);
 
-     {showCreate && (
-       <Card>
-         <Text style={{fontSize:19,fontWeight:'900',marginBottom:12}}>
-           Create quiz
-         </Text>
+    try {
+      if (isPublished) {
+        await api.unpublishQuiz(id);
+      } else {
+        await api.publishQuiz(id);
+      }
 
-         <Field
-           label="Quiz title"
-           value={title}
-           onChangeText={setTitle}
-           placeholder="English Foundations Quiz"
-         />
+      await load();
+    } catch (e) {
+      Alert.alert(
+        isPublished ? 'Unpublish quiz' : 'Publish quiz',
+        e?.message || 'Unable to update quiz status.'
+      );
+    } finally {
+      setBusyId('');
+    }
+  };
 
-         <Field
-           label="Description"
-           value={description}
-           onChangeText={setDescription}
-           multiline
-         />
+  const removeQuiz = (quiz) => {
+    const id = api.idOf(quiz);
+    if (!id) return;
 
-         <View style={{flexDirection:'row',gap:10,flexWrap:'wrap'}}>
-           <View style={{flex:1,minWidth:180}}>
-             <Field
-               label="Duration"
-               value={duration}
-               onChangeText={setDuration}
-               keyboardType="numeric"
-             />
-           </View>
+    Alert.alert(
+      'Delete quiz?',
+      `This will delete "${quiz.title || quiz.name || 'this quiz'}".`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setBusyId(id);
+            try {
+              await api.deleteQuiz(id);
+              await load();
+            } catch (e) {
+              Alert.alert('Delete quiz', e?.message || 'Unable to delete quiz.');
+            } finally {
+              setBusyId('');
+            }
+          },
+        },
+      ]
+    );
+  };
 
-           <View style={{flex:1,minWidth:180}}>
-             <Field
-               label="Passing %"
-               value={passing}
-               onChangeText={setPassing}
-               keyboardType="numeric"
-             />
-           </View>
-         </View>
+  if (error) {
+    return (
+      <AppShell>
+        <ErrorState title="Quizzes could not load" message={error} onRetry={load} />
+      </AppShell>
+    );
+  }
 
-         <Button
-           title="Create Quiz"
-           onPress={create}
-           disabled={!title.trim()}
-         />
-       </Card>
-     )}
+  if (loading) {
+    return (
+      <AppShell>
+        <Loading label="Loading quizzes..." />
+      </AppShell>
+    );
+  }
 
-     {!items ? (
-       <Loading label="Loading quizzes…" />
-     ) : items.length === 0 ? (
-       <Empty
-         title="No quizzes yet"
-         message="Create your first quiz."
-       />
-     ) : (
-       items.map(q => (
-         <QuizEditor
-           key={api.idOf(q)}
-           quiz={q}
-           onReload={load}
-         />
-       ))
-     )}
-   </AppShell>
- );
+  return (
+    <AppShell>
+      <Header
+        eyebrow="Test Series"
+        title="Quiz Management"
+        subtitle="Create, review and publish quizzes for students."
+      />
+
+      <Card style={{ backgroundColor: colors.navy, borderColor: colors.navy }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Text style={{ fontSize: 32 }}>📝</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900' }}>
+              Publish quizzes
+            </Text>
+            <Text style={{ color: '#CBD5E1', marginTop: 4 }}>
+              Published standalone quizzes appear in Test Series and on the student home page.
+            </Text>
+          </View>
+          <Badge tone="green">
+            {items.filter((x) => x.is_published).length} Published
+          </Badge>
+        </View>
+      </Card>
+
+      <Field
+        label="Search quizzes"
+        value={search}
+        onChangeText={setSearch}
+        placeholder="Search by title, category, exam..."
+      />
+
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 10,
+          gap: 10,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 20, fontWeight: '900', color: colors.navy }}>
+            All quizzes
+          </Text>
+          <Text style={{ color: colors.muted, marginTop: 3 }}>
+            {filtered.length} quiz{filtered.length === 1 ? '' : 'zes'}
+          </Text>
+        </View>
+
+        <Button title="↻ Refresh" variant="secondary" onPress={load} />
+      </View>
+
+      {filtered.length === 0 ? (
+        <Empty
+          title="No quizzes found"
+          message={
+            search
+              ? 'Try a different search.'
+              : 'Create a quiz from Bulk Content or Course Builder first.'
+          }
+        />
+      ) : (
+        filtered.map((quiz) => {
+          const id = api.idOf(quiz);
+          const published = quiz.is_published === true;
+          const questions = Array.isArray(quiz.question_ids)
+            ? quiz.question_ids.length
+            : Number(quiz.question_count || 0);
+          const standalone = !quiz.course_id;
+
+          return (
+            <Card key={id} style={{ backgroundColor: '#FAFCFF' }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                }}
+              >
+                <Text style={{ fontSize: 28 }}>📝</Text>
+
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 18,
+                      fontWeight: '900',
+                      color: colors.navy,
+                    }}
+                  >
+                    {quiz.title || quiz.name || 'Untitled Quiz'}
+                  </Text>
+
+                  <Text style={{ color: colors.muted, marginTop: 4 }}>
+                    {quiz.description || 'No description'}
+                  </Text>
+
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      gap: 6,
+                      marginTop: 9,
+                    }}
+                  >
+                    <Badge tone={published ? 'green' : 'orange'}>
+                      {published ? 'Published' : 'Draft'}
+                    </Badge>
+
+                    <Badge tone="purple">
+                      {quiz.category || 'General'}
+                    </Badge>
+
+                    <Badge>
+                      {questions} question{questions === 1 ? '' : 's'}
+                    </Badge>
+
+                    <Badge>
+                      {quiz.duration_minutes || 15} min
+                    </Badge>
+
+                    {standalone && <Badge tone="green">Standalone Test</Badge>}
+                    {!standalone && <Badge tone="purple">Course Quiz</Badge>}
+                  </View>
+                </View>
+              </View>
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                  marginTop: 14,
+                }}
+              >
+                <Button
+                  title={
+                    busyId === id
+                      ? published
+                        ? 'Unpublishing...'
+                        : 'Publishing...'
+                      : published
+                        ? 'Unpublish'
+                        : 'Publish Quiz'
+                  }
+                  onPress={() => togglePublish(quiz)}
+                  disabled={busyId === id}
+                />
+
+                <Button
+                  title="Delete"
+                  variant="danger"
+                  onPress={() => removeQuiz(quiz)}
+                  disabled={busyId === id}
+                />
+              </View>
+
+              {!published && (
+                <Text
+                  style={{
+                    marginTop: 9,
+                    color: colors.muted,
+                    fontSize: 12,
+                  }}
+                >
+                  {questions === 0
+                    ? 'Add questions before publishing.'
+                    : 'This quiz is a draft. Publish it when it is ready for students.'}
+                </Text>
+              )}
+            </Card>
+          );
+        })
+      )}
+    </AppShell>
+  );
 }

@@ -1,79 +1,435 @@
-import React,{useEffect,useState} from 'react';
-import {Alert,Pressable,ScrollView,Text,View,useWindowDimensions} from 'react-native';
-import {AppShell,Badge,Button,Card,Empty,ErrorState,Field,Header,Loading,ProgressBar,Select} from '../../components/UI';
-import {api} from '../../services/api';
-import {colors} from '../../theme';
+import React, { useEffect, useState } from 'react';
+import { Alert, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { AppShell, Badge, Button, Card, Empty, ErrorState, Loading, ProgressBar } from '../../components/UI';
+import { api } from '../../services/api';
+import { colors } from '../../theme';
 
-export default function StudentCourseScreen({courseId,onBack,openQuiz}){
- const {width}=useWindowDimensions();
- const mobile=width<700;
- const [data,setData]=useState(null),[progress,setProgress]=useState(null),[completed,setCompleted]=useState([]),[tab,setTab]=useState('overview'),[error,setError]=useState(''),[rating,setRating]=useState(5),[review,setReview]=useState(''),[reviews,setReviews]=useState([]),[bookmarked,setBookmarked]=useState(false);
- const load=async()=>{try{setError('');const results=await Promise.allSettled([api.courseOverview(courseId),api.courseProgress(courseId),api.progress(),api.reviews(courseId),api.bookmarks()]);
-   const [o,p,allProgress,rv,bm]=results;
-   if(o.status!=='fulfilled') throw o.reason;
-   setData(o.value);
-   setProgress(p.status==='fulfilled'?p.value:null);
-   setCompleted(allProgress.status==='fulfilled'?api.listOf(allProgress.value).filter(x=>String(x.course_id)===String(courseId)&&x.completed).map(x=>String(x.lesson_id)):[]);
-   setReviews(rv.status==='fulfilled'?api.listOf(rv.value):[]);
-   setBookmarked(bm.status==='fulfilled'?api.listOf(bm.value).some(x=>x.item_type==='course'&&String(x.item_id)===String(courseId)):false);
- }catch(e){setError(e?.message||'Unable to open this course.')}};
- useEffect(()=>{load()},[courseId]);
- if(error)return <AppShell><Header title="Course" right={<Button title="← Back" variant="secondary" onPress={onBack}/>}/><ErrorState title="Course could not load" message={error} onRetry={load}/></AppShell>;
- if(!data)return <AppShell><Loading label="Opening course…"/></AppShell>;
- const c=data.course||{},mods=data.modules||[],lessons=data.lessons||[],quizzes=data.quizzes||[];
- const pct=Number(progress?.percentage||0);
- const complete=async l=>{try{await api.completeLesson(api.idOf(l));const [p,all]=await Promise.all([api.courseProgress(courseId),api.progress()]);setProgress(p);setCompleted(api.listOf(all).filter(x=>String(x.course_id)===String(courseId)&&x.completed).map(x=>String(x.lesson_id)))}catch(e){Alert.alert('Progress',e.message)}};
- const enroll=async()=>{try{await api.enroll(courseId);Alert.alert('Enrolled','The course is now in My Learning.')}catch(e){Alert.alert('Enrollment',e.message)}};
- const bookmark=async()=>{try{if(bookmarked){Alert.alert('Bookmark','This course is already saved. Open Bookmarks to manage it.');return;}await api.addBookmark({item_type:'course',item_id:courseId,title:c.name||c.title});setBookmarked(true)}catch(e){Alert.alert('Bookmark',e.message)}};
- const submitReview=async()=>{try{await api.addReview(courseId,{rating,review});setReview('');const r=await api.reviews(courseId);setReviews(api.listOf(r));Alert.alert('Thank you','Your review has been saved.')}catch(e){Alert.alert('Review',e.message)}};
- const certificate=async()=>{try{const x=await api.issueCertificate(courseId);Alert.alert('Certificate ready',x.certificate_id)}catch(e){Alert.alert('Certificate',e.message)}};
- const tabs=[['overview','Overview'],['curriculum','Curriculum'],['tests','Tests'],['resources','Resources'],['reviews','Reviews']];
- return <AppShell>
-   <View style={{marginBottom:8}}>
-    <Text style={{fontSize:12,color:colors.muted,fontWeight:'800'}}>Home  ›  Courses  ›  {c.name||c.title||'Course'}</Text>
-   </View>
-   <Header eyebrow="Course overview" title={c.name||c.title||'Course'} subtitle={c.short_description||c.description||'Learn through structured topics, lessons, resources and assessments.'} right={<View style={{flexDirection:'row',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}><Button title={bookmarked?'🔖 Saved':'🔖 Save'} variant="secondary" onPress={bookmark}/><Button title="← Back" variant="secondary" onPress={onBack}/></View>}/>
-   <Card style={{backgroundColor:colors.navy,borderColor:colors.navy,padding:mobile?18:24}}>
-    <View style={{flexDirection:mobile?'column':'row',gap:18}}>
-      <View style={{flex:1}}>
-       <View style={{flexDirection:'row',flexWrap:'wrap',gap:7}}><Badge tone="pink">{c.is_free===false?'PAID':'FREE COURSE'}</Badge><Badge>{c.level||'Beginner'}</Badge><Badge tone="purple">{c.category||'General'}</Badge><Badge tone="green">{c.language||'English'}</Badge></View>
-       <Text style={{fontSize:mobile?25:32,fontWeight:'900',color:'#fff',marginTop:12}}>{c.name||c.title}</Text>
-       <Text style={{color:'#CBD5E1',lineHeight:22,marginTop:7}}>{c.description||c.short_description||'Build practical skills with topic-wise lessons and assessments.'}</Text>
-       <View style={{flexDirection:'row',flexWrap:'wrap',gap:8,marginTop:15}}>{[['🎥',c.video_count||0,'Videos'],['📄',c.pdf_count||0,'PDFs'],['📝',c.mock_test_count||quizzes.length,'Tests'],['⏱',`${c.estimated_minutes||0} min`,'Duration']].map(([icon,val,label])=><View key={label} style={{backgroundColor:'rgba(255,255,255,.09)',borderRadius:12,padding:10,minWidth:90}}><Text style={{color:'#CBD5E1',fontSize:11}}>{icon} {label}</Text><Text style={{color:'#fff',fontWeight:'900',marginTop:3}}>{val}</Text></View>)}</View>
-       <Button title="Start / Add to My Learning" onPress={enroll} style={{marginTop:16}}/>
+const tabs = [
+  ['overview', '▣', 'Overview'],
+  ['curriculum', '▤', 'Lessons'],
+  ['tests', '◎', 'Quiz'],
+  ['resources', '▧', 'Resources'],
+  ['reviews', '☏', 'Discussions'],
+];
+
+function Stat({ icon, value, label }) {
+  return (
+    <View style={{ flex: 1, minWidth: 125, flexDirection: 'row', alignItems: 'center', gap: 10, padding: 12, backgroundColor: '#FAF9FF', borderRadius: 13 }}>
+      <View style={{ width: 34, height: 34, borderRadius: 10, backgroundColor: colors.purpleSoft, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontSize: 16, color: colors.primary }}>{icon}</Text>
       </View>
-      <View style={{width:mobile?'100%':250,backgroundColor:'#fff',borderRadius:16,padding:17}}>
-       <Text style={{fontWeight:'900',color:colors.navy}}>Your course progress</Text>
-       <Text style={{fontSize:34,fontWeight:'900',color:colors.primary,marginTop:4}}>{pct}%</Text>
-       <ProgressBar value={pct}/>
-       <Text style={{fontSize:12,color:colors.muted,marginTop:7}}>{progress?.completed_lessons||0} of {progress?.total_lessons||lessons.length||0} lessons complete</Text>
-       {pct>0&&pct<100&&<Text style={{fontSize:12,color:colors.success,fontWeight:'800',marginTop:10}}>Keep going — you're making progress.</Text>}
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 16, fontWeight: '900', color: colors.navy }}>{value}</Text>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted, marginTop: 1 }}>{label}</Text>
       </View>
     </View>
-   </Card>
-   <Card style={{padding:0,overflow:'hidden'}}>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{paddingHorizontal:8}}>
-     {tabs.map(([x,label])=><Pressable key={x} onPress={()=>setTab(x)} style={{paddingHorizontal:15,paddingVertical:13,borderBottomWidth:3,borderBottomColor:tab===x?colors.primary:'transparent'}}><Text style={{fontWeight:'900',color:tab===x?colors.primary:colors.muted}}>{label}</Text></Pressable>)}
-    </ScrollView>
-   </Card>
-   {tab==='overview'&&<>
-    <Card><Text style={{fontSize:19,fontWeight:'900',color:colors.navy}}>About this course</Text><Text style={{color:colors.text,lineHeight:22,marginTop:8}}>{c.description||'Build practical skills through structured topic-wise lessons and assessments.'}</Text></Card>
-    {Array.isArray(c.learning_objectives)&&c.learning_objectives.length>0&&<Card><Text style={{fontSize:19,fontWeight:'900',color:colors.navy}}>What you'll learn</Text>{c.learning_objectives.map((x,i)=><Text key={i} style={{marginTop:9,color:colors.text}}>✓ {x}</Text>)}</Card>}
-   </>}
-   {tab==='curriculum'&&<>
-    <Text style={{fontSize:20,fontWeight:'900',color:colors.navy,marginBottom:10}}>Course curriculum</Text>
-    {mods.length===0?<Empty title="Curriculum is not published yet" message="The course is available, but no modules have been published."/>:mods.map((m,mi)=>{const ls=lessons.filter(l=>String(l.topic_id)===String(api.idOf(m)));return <Card key={api.idOf(m)}>
-      <View style={{flexDirection:'row',alignItems:'center',gap:10}}><View style={{width:40,height:40,borderRadius:12,backgroundColor:colors.blueSoft,alignItems:'center',justifyContent:'center'}}><Text style={{fontWeight:'900',color:colors.primary}}>{mi+1}</Text></View><View style={{flex:1}}><Text style={{fontSize:17,fontWeight:'900',color:colors.navy}}>{m.name||m.title}</Text>{m.description&&<Text style={{fontSize:12,color:colors.muted,marginTop:3}}>{m.description}</Text>}</View></View>
-      {ls.length===0?<Text style={{color:colors.muted,marginTop:12}}>No lessons published in this module yet.</Text>:ls.map((l,i)=>{const lid=api.idOf(l),done=completed.includes(lid);return <View key={lid} style={{flexDirection:mobile?'column':'row',alignItems:mobile?'stretch':'center',gap:10,paddingVertical:12,borderTopWidth:1,borderTopColor:colors.border,marginTop:9}}>
-        <View style={{width:36,height:36,borderRadius:10,backgroundColor:done?colors.greenSoft:colors.background,alignItems:'center',justifyContent:'center'}}><Text>{done?'✓':'📖'}</Text></View><View style={{flex:1}}><Text style={{fontWeight:'800',color:colors.navy}}>{i+1}. {l.title||l.name}</Text><Text style={{fontSize:12,color:colors.muted,marginTop:3}}>{l.duration_minutes||10} min {l.resources?.length?`· ${l.resources.length} resources`:''}</Text></View><Button title={done?'Completed':'Mark complete'} variant={done?'success':'secondary'} onPress={()=>complete(l)} /></View>})}
-     </Card>})}
-   </>}
-   {tab==='tests'&&<>
-    <Text style={{fontSize:20,fontWeight:'900',color:colors.navy,marginBottom:10}}>Tests & assessments</Text>
-    {quizzes.length===0?<Empty title="No tests published" message="Tests attached to this course will appear here."/>:quizzes.map(q=><Card key={api.idOf(q)} style={{borderColor:colors.border}}><View style={{flexDirection:mobile?'column':'row',alignItems:mobile?'stretch':'center',gap:12}}><View style={{width:48,height:48,borderRadius:14,backgroundColor:colors.blueSoft,alignItems:'center',justifyContent:'center'}}><Text style={{fontSize:21}}>📝</Text></View><View style={{flex:1}}><Text style={{fontSize:17,fontWeight:'900',color:colors.navy}}>{q.title||q.name}</Text><Text style={{color:colors.muted,marginTop:4}}>{q.duration_minutes||15} min · {q.question_ids?.length||0} questions · Pass {q.passing_percentage||60}%</Text></View><Button title="Attempt test" onPress={()=>openQuiz(api.idOf(q))}/></View></Card>)}
-   </>}
-   {tab==='resources'&&<><Card><Text style={{fontSize:19,fontWeight:'900',color:colors.navy}}>Learning resources</Text><Text style={{color:colors.muted,marginTop:5,lineHeight:19}}>Videos, PDFs, notes and practice material attached to published lessons.</Text></Card>{lessons.flatMap(l=>(l.resources||[]).map((r,i)=><Card key={`${api.idOf(l)}-${i}`}><Text style={{fontWeight:'900',color:colors.navy}}>{l.title||l.name}</Text><Text style={{color:colors.primary,marginTop:5}}>{String(r)}</Text></Card>))}</>}
-   {tab==='reviews'&&<><Card><Text style={{fontSize:19,fontWeight:'900',color:colors.navy}}>Rate this course</Text><Select label="Rating" value={rating} onChange={setRating} options={[1,2,3,4,5].map(x=>({label:`${x} ★`,value:x}))}/><Field label="Review" value={review} onChangeText={setReview} placeholder="What did you think about the course?" multiline/><Button title="Submit review" onPress={submitReview}/></Card>{reviews.length===0?<Empty title="No reviews yet" message="Be the first learner to review this course."/>:reviews.map(r=><Card key={api.idOf(r)}><Text style={{fontWeight:'900',color:colors.navy}}>{r.user_name||'Learner'} · {r.rating} ★</Text><Text style={{color:colors.muted,marginTop:5}}>{r.review}</Text></Card>)}</>}
-   {pct>=100&&<Card style={{backgroundColor:colors.greenSoft,borderColor:'#86EFAC'}}><Text style={{fontSize:18,fontWeight:'900',color:colors.navy}}>🎓 Course completed</Text><Text style={{color:colors.muted,marginTop:5}}>You can now request your certificate.</Text><Button title="Get certificate" variant="success" onPress={certificate} style={{marginTop:12}}/></Card>}
- </AppShell>;
+  );
+}
+
+function LessonRow({ lesson, index, topicIndex, done, onOpen }) {
+  return (
+    <Pressable
+      onPress={onOpen}
+      style={({ pressed }) => ({
+        paddingHorizontal: 14,
+        paddingVertical: 11,
+        borderTopWidth: 1,
+        borderTopColor: colors.border,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        backgroundColor: pressed ? '#F8F7FF' : '#fff',
+      })}
+    >
+      <View style={{ width: 23, height: 23, borderRadius: 12, backgroundColor: done ? colors.greenSoft : colors.blueSoft, alignItems: 'center', justifyContent: 'center' }}>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 11, fontWeight: '900', color: done ? colors.success : colors.primary }}>{done ? '✓' : '○'}</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 12, fontWeight: '800', color: colors.navy }}>
+          {topicIndex}.{index + 1} {lesson.title || lesson.name}
+        </Text>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted, marginTop: 2 }}>
+          {lesson.duration_minutes || 10} min
+        </Text>
+      </View>
+      <Text style={{ fontFamily: colors.fontFamily, fontSize: 11, fontWeight: '800', color: colors.primary }}>
+        {done ? 'Review' : 'Open'}
+      </Text>
+      <Text style={{ fontSize: 17, color: colors.subtle }}>›</Text>
+    </Pressable>
+  );
+}
+
+
+function CourseDetailsPanel({ course, modules, lessons, quizzes, resources, pct, onContinue }) {
+  const detailRows = [
+    ['Category', course.category || 'General'],
+    ['Exam', course.exam || 'General'],
+    ['Level', course.level || 'Beginner'],
+    ['Language', course.language || 'English'],
+    ['Duration', course.duration || (course.duration_minutes ? `${course.duration_minutes} min` : 'Self paced')],
+    ['Lessons', String(lessons.length)],
+    ['Topics', String(modules.length)],
+    ['Quizzes', String(quizzes.length)],
+    ['Resources', String(resources.length || course.pdf_count || 0)],
+    ['Access', course.is_free === false ? 'Paid course' : 'Free course'],
+    ['Enrolled', String(course.enrollment_count || course.enrolled_count || course.students_count || 0)],
+    ['Certificate', course.certificate_enabled === false ? 'Not included' : 'On completion'],
+    ['Instructor', course.instructor_name || course.instructor || 'Smart Learning Lab'],
+  ];
+  const objectives = Array.isArray(course.learning_objectives) ? course.learning_objectives : [];
+  const tags = Array.isArray(course.tags) ? course.tags : [];
+  return (
+    <View style={{ width: 315 }}>
+      <Card style={{ padding: 16 }}>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 17, fontWeight: '900', color: colors.navy }}>Course Details</Text>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted, marginTop: 4 }}>Everything you need to know before you start.</Text>
+        <View style={{ marginTop: 13 }}>
+          {detailRows.map(([label, value]) => (
+            <View key={label} style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 12, paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted }}>{label}</Text>
+              <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, fontWeight: '900', color: colors.navy, textAlign: 'right', flex: 1 }}>{value}</Text>
+            </View>
+          ))}
+        </View>
+      </Card>
+
+      <Card style={{ padding: 16 }}>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 16, fontWeight: '900', color: colors.navy }}>Your Progress</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 12, marginBottom: 6 }}>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted }}>Course completion</Text>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, fontWeight: '900', color: colors.primary }}>{pct}%</Text>
+        </View>
+        <ProgressBar value={pct} />
+        <Button title={pct > 0 ? '▶ Continue Learning' : '▶ Start Learning'} onPress={onContinue} style={{ width: '100%', marginTop: 12 }} />
+      </Card>
+
+      <Card style={{ padding: 16 }}>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 16, fontWeight: '900', color: colors.navy }}>What you'll learn</Text>
+        {objectives.length ? objectives.slice(0, 8).map((item, i) => <Text key={i} style={{ fontFamily: colors.fontFamily, fontSize: 10, lineHeight: 16, color: colors.text, marginTop: 9 }}>✓  {item}</Text>) : <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, lineHeight: 17, color: colors.muted, marginTop: 8 }}>Follow the lessons in order to build your knowledge step by step.</Text>}
+      </Card>
+
+      {tags.length > 0 && <Card style={{ padding: 16 }}>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 16, fontWeight: '900', color: colors.navy }}>Topics & Tags</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>{tags.slice(0, 12).map(tag => <Badge key={String(tag)}>{String(tag)}</Badge>)}</View>
+      </Card>}
+    </View>
+  );
+}
+
+export default function StudentCourseScreen({ courseId, onBack, openQuiz, openLesson }) {
+  const { width } = useWindowDimensions();
+  const mobile = width < 720;
+  const [data, setData] = useState(null);
+  const [progress, setProgress] = useState(null);
+  const [completed, setCompleted] = useState([]);
+  const [tab, setTab] = useState('overview');
+  const [expanded, setExpanded] = useState({ 0: true });
+  const [error, setError] = useState('');
+  const [reviews, setReviews] = useState([]);
+  const [bookmarked, setBookmarked] = useState(false);
+
+  const load = async () => {
+    try {
+      setError('');
+      const results = await Promise.allSettled([
+        api.courseOverview(courseId),
+        api.courseProgress(courseId),
+        api.progress(),
+        api.reviews(courseId),
+        api.bookmarks(),
+      ]);
+      const [overview, courseProgress, allProgress, reviewResult, bookmarks] = results;
+      if (overview.status !== 'fulfilled') throw overview.reason;
+      setData(overview.value);
+      setProgress(courseProgress.status === 'fulfilled' ? courseProgress.value : null);
+      setCompleted(
+        allProgress.status === 'fulfilled'
+          ? api.listOf(allProgress.value)
+              .filter(x => String(x.course_id) === String(courseId) && x.completed)
+              .map(x => String(x.lesson_id))
+          : []
+      );
+      setReviews(reviewResult.status === 'fulfilled' ? api.listOf(reviewResult.value) : []);
+      setBookmarked(
+        bookmarks.status === 'fulfilled'
+          ? api.listOf(bookmarks.value).some(x => x.item_type === 'course' && String(x.item_id) === String(courseId))
+          : false
+      );
+    } catch (e) {
+      setError(e?.message || 'Unable to open this course.');
+    }
+  };
+
+  useEffect(() => { load(); }, [courseId]);
+
+  if (error) {
+    return (
+      <AppShell>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 24, fontWeight: '900', color: colors.navy }}>Course</Text>
+          <Button title="← Back to Courses" variant="secondary" onPress={onBack} />
+        </View>
+        <ErrorState title="Course could not load" message={error} onRetry={load} />
+      </AppShell>
+    );
+  }
+
+  if (!data) return <AppShell><Loading label="Opening course…" /></AppShell>;
+
+  const course = data.course || {};
+  const modules = data.modules || [];
+  const lessons = data.lessons || [];
+  const quizzes = data.quizzes || [];
+  const resources = data.resources || [];
+  const pct = Math.round(Number(progress?.percentage || 0));
+
+  const orderedLessons = modules.flatMap(module => lessons.filter(lesson => String(lesson.topic_id) === String(api.idOf(module))));
+
+  const openLessonAt = (lesson) => {
+    if (!openLesson) return;
+    const lessonId = api.idOf(lesson);
+    const index = orderedLessons.findIndex(x => String(api.idOf(x)) === String(lessonId));
+    openLesson(
+      lessonId,
+      courseId,
+      index > 0 ? api.idOf(orderedLessons[index - 1]) : '',
+      index < orderedLessons.length - 1 ? api.idOf(orderedLessons[index + 1]) : ''
+    );
+  };
+
+  const complete = async lesson => {
+    try {
+      await api.completeLesson(api.idOf(lesson));
+      const [p, all] = await Promise.all([api.courseProgress(courseId), api.progress()]);
+      setProgress(p);
+      setCompleted(api.listOf(all).filter(x => String(x.course_id) === String(courseId) && x.completed).map(x => String(x.lesson_id)));
+    } catch (e) {
+      Alert.alert('Progress', e.message);
+    }
+  };
+
+  const firstIncomplete = orderedLessons.find(x => !completed.includes(String(api.idOf(x)))) || orderedLessons[0];
+
+  const continueLearning = () => {
+    if (!firstIncomplete) {
+      setTab('curriculum');
+      return;
+    }
+    openLessonAt(firstIncomplete);
+  };
+
+  const bookmark = async () => {
+    try {
+      if (bookmarked) return;
+      await api.addBookmark({ item_type: 'course', item_id: courseId, title: course.name || course.title });
+      setBookmarked(true);
+    } catch (e) {
+      Alert.alert('Bookmark', e.message);
+    }
+  };
+
+  const certificate = async () => {
+    try {
+      const result = await api.issueCertificate(courseId);
+      Alert.alert('Certificate ready', result.certificate_id);
+    } catch (e) {
+      Alert.alert('Certificate', e.message);
+    }
+  };
+
+  const heroTitle = course.name || course.title || 'Course';
+  const heroDescription = course.short_description || course.description || 'Learn through a structured curriculum with practical examples and assessments.';
+
+  return (
+    <AppShell>
+      <Pressable onPress={onBack} style={{ marginBottom: 12 }}>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 12, fontWeight: '800', color: colors.primary }}>‹  Back to Courses</Text>
+      </Pressable>
+
+      {/* Course hero — same visual language as the supplied course/quiz design */}
+      <Card style={{ backgroundColor: '#37217D', borderColor: '#37217D', padding: mobile ? 16 : 22, overflow: 'hidden' }}>
+        <View style={{ flexDirection: mobile ? 'column' : 'row', gap: 20 }}>
+          <View style={{ width: mobile ? '100%' : 136, height: mobile ? 170 : 136, borderRadius: 15, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={{ fontSize: 58 }}>☕</Text>
+            <Text style={{ fontFamily: colors.fontFamily, fontSize: 13, fontWeight: '900', color: '#C05B25', marginTop: 2 }}>JAVA</Text>
+          </View>
+
+          <View style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 7 }}>
+              <Badge tone="green">{course.level || 'Beginner'}</Badge>
+              <Badge tone="purple">{course.category || 'General'}</Badge>
+              <Badge tone="pink">{course.is_free === false ? 'PAID' : 'FREE'}</Badge>
+            </View>
+            <Text style={{ fontFamily: colors.fontFamily, color: '#D9D4FF', fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginTop: 10 }}>COURSE</Text>
+            <Text style={{ fontFamily: colors.fontFamily, color: '#fff', fontSize: mobile ? 24 : 28, fontWeight: '900', marginTop: 4 }}>{heroTitle}</Text>
+            <Text style={{ fontFamily: colors.fontFamily, color: '#E4E2F4', fontSize: 12, lineHeight: 20, marginTop: 6 }}>{heroDescription}</Text>
+
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 12, alignItems: 'center', marginTop: 12 }}>
+              <Text style={{ fontFamily: colors.fontFamily, color: colors.gold, fontSize: 15, fontWeight: '900' }}>★★★★★</Text>
+              <Text style={{ fontFamily: colors.fontFamily, color: '#fff', fontSize: 11, fontWeight: '800' }}>4.7</Text>
+              <Text style={{ fontFamily: colors.fontFamily, color: '#C8C7DC', fontSize: 11 }}>{course.enrollment_count || course.enrolled_count || 0} Enrolled</Text>
+            </View>
+
+            <View style={{ flexDirection: mobile ? 'column' : 'row', gap: 10, marginTop: 16 }}>
+              <View style={{ flex: 1, backgroundColor: 'rgba(255,255,255,.10)', borderRadius: 12, padding: 10 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 7 }}>
+                  <Text style={{ fontFamily: colors.fontFamily, color: '#D2D1E5', fontSize: 10 }}>Your Progress</Text>
+                  <Text style={{ fontFamily: colors.fontFamily, color: '#fff', fontSize: 10, fontWeight: '900' }}>{pct}% Complete</Text>
+                </View>
+                <ProgressBar value={pct} color="#7B5CFF" />
+              </View>
+              <Button title={pct > 0 ? '▶  Continue Learning' : '▶  Start Learning'} onPress={continueLearning} style={{ minWidth: 190 }} />
+            </View>
+          </View>
+
+          {!mobile && (
+            <Pressable onPress={bookmark} style={{ width: 36, height: 36, borderRadius: 10, backgroundColor: 'rgba(255,255,255,.12)', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={{ fontSize: 20, color: '#fff' }}>{bookmarked ? '🔖' : '♧'}</Text>
+            </Pressable>
+          )}
+        </View>
+      </Card>
+
+      <View style={{ flexDirection: mobile ? 'column' : 'row', alignItems: 'flex-start', gap: 14, marginTop: 14 }}>
+        <View style={{ flex: 1, minWidth: 0 }}>
+      {/* Course navigation */}
+      <Card style={{ padding: 0, overflow: 'hidden', borderRadius: 13 }}>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: 7 }}>
+          {tabs.map(([key, icon, label]) => (
+            <Pressable key={key} onPress={() => setTab(key)} style={{ paddingHorizontal: 15, paddingVertical: 14, borderBottomWidth: 3, borderBottomColor: tab === key ? colors.primary : 'transparent', flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+              <Text style={{ fontSize: 14, color: tab === key ? colors.primary : colors.muted }}>{icon}</Text>
+              <Text style={{ fontFamily: colors.fontFamily, fontSize: 11, fontWeight: '900', color: tab === key ? colors.primary : colors.muted }}>{label}</Text>
+              {key === 'tests' && quizzes.length > 0 && <Badge tone="purple">{quizzes.length}</Badge>}
+            </Pressable>
+          ))}
+        </ScrollView>
+      </Card>
+
+      {tab === 'overview' && (
+        <>
+          <Card>
+            <Text style={{ fontFamily: colors.fontFamily, fontSize: 17, fontWeight: '900', color: colors.navy }}>About this course</Text>
+            <Text style={{ fontFamily: colors.fontFamily, color: colors.text, fontSize: 12, lineHeight: 21, marginTop: 7 }}>{course.description || heroDescription}</Text>
+            <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 15 }}>
+              <Stat icon="▤" value={lessons.length} label="Lessons" />
+              <Stat icon="✦" value={modules.length} label="Topics" />
+              <Stat icon="◎" value={quizzes.length} label="Quizzes" />
+              <Stat icon="▧" value={resources.length || course.pdf_count || 0} label="Resources" />
+            </View>
+          </Card>
+
+          {Array.isArray(course.learning_objectives) && course.learning_objectives.length > 0 && (
+            <Card>
+              <Text style={{ fontFamily: colors.fontFamily, fontSize: 17, fontWeight: '900', color: colors.navy }}>What you'll learn</Text>
+              {course.learning_objectives.map((item, index) => (
+                <Text key={index} style={{ fontFamily: colors.fontFamily, fontSize: 12, color: colors.text, marginTop: 9 }}>✓  {item}</Text>
+              ))}
+            </Card>
+          )}
+
+          <Card>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: colors.fontFamily, fontSize: 17, fontWeight: '900', color: colors.navy }}>Course Content</Text>
+                <Text style={{ fontFamily: colors.fontFamily, fontSize: 11, color: colors.muted, marginTop: 3 }}>Start with the first lesson and move through the course in order.</Text>
+              </View>
+              <Button title="Lessons" variant="secondary" onPress={() => setTab('curriculum')} />
+            </View>
+          </Card>
+        </>
+      )}
+
+      {tab === 'curriculum' && (
+        <Card>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ fontFamily: colors.fontFamily, fontSize: 18, fontWeight: '900', color: colors.navy }}>Course Content</Text>
+              <Text style={{ fontFamily: colors.fontFamily, fontSize: 11, color: colors.muted, marginTop: 3 }}>{modules.length} topics · {lessons.length} lessons</Text>
+            </View>
+            <Badge tone="purple">{pct}% Complete</Badge>
+          </View>
+
+          {modules.length === 0 ? (
+            <Empty title="Curriculum is not published yet" message="Published lessons will appear here." />
+          ) : modules.map((module, moduleIndex) => {
+            const moduleId = api.idOf(module);
+            const moduleLessons = lessons.filter(lesson => String(lesson.topic_id) === String(moduleId));
+            const doneCount = moduleLessons.filter(lesson => completed.includes(String(api.idOf(lesson)))).length;
+            const isOpen = !!expanded[moduleIndex];
+            return (
+              <View key={moduleId} style={{ borderWidth: 1, borderColor: colors.border, borderRadius: 13, marginTop: 12, overflow: 'hidden' }}>
+                <Pressable onPress={() => setExpanded(prev => ({ ...prev, [moduleIndex]: !isOpen }))} style={{ padding: 13, backgroundColor: '#FAF9FF', flexDirection: 'row', alignItems: 'center', gap: 9 }}>
+                  <View style={{ width: 28, height: 28, borderRadius: 8, backgroundColor: colors.purpleSoft, alignItems: 'center', justifyContent: 'center' }}>
+                    <Text style={{ fontFamily: colors.fontFamily, fontWeight: '900', color: colors.primary }}>{moduleIndex + 1}</Text>
+                  </View>
+                  <Text style={{ fontFamily: colors.fontFamily, fontSize: 12, fontWeight: '900', color: colors.navy, flex: 1 }}>{module.name || module.title}</Text>
+                  <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted }}>{doneCount}/{moduleLessons.length}</Text>
+                  <Text style={{ color: colors.primary, fontSize: 16 }}>{isOpen ? '⌃' : '⌄'}</Text>
+                </Pressable>
+                {isOpen && moduleLessons.map((lesson, lessonIndex) => (
+                  <LessonRow
+                    key={api.idOf(lesson)}
+                    lesson={lesson}
+                    index={lessonIndex}
+                    topicIndex={moduleIndex + 1}
+                    done={completed.includes(String(api.idOf(lesson)))}
+                    onOpen={() => openLessonAt(lesson)}
+                  />
+                ))}
+              </View>
+            );
+          })}
+        </Card>
+      )}
+
+      {tab === 'tests' && (
+        <Card>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 18, fontWeight: '900', color: colors.navy }}>Quiz & Assessments</Text>
+          {quizzes.length === 0 ? <Empty title="No tests published" message="Course quizzes will appear here when published." /> : quizzes.map(quiz => (
+            <View key={api.idOf(quiz)} style={{ padding: 14, borderWidth: 1, borderColor: colors.border, borderRadius: 13, marginTop: 10, flexDirection: mobile ? 'column' : 'row', alignItems: mobile ? 'stretch' : 'center', gap: 12 }}>
+              <View style={{ width: 44, height: 44, borderRadius: 13, backgroundColor: colors.purpleSoft, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 20, color: colors.primary }}>◎</Text></View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontFamily: colors.fontFamily, fontWeight: '900', color: colors.navy }}>{quiz.title || quiz.name}</Text>
+                <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted, marginTop: 3 }}>{(quiz.question_ids || []).length} questions · {quiz.duration_minutes || 15} min · Pass {quiz.passing_percentage || 60}%</Text>
+              </View>
+              <Button title="Start Quiz" onPress={() => openQuiz && openQuiz(api.idOf(quiz))} />
+            </View>
+          ))}
+        </Card>
+      )}
+
+      {tab === 'resources' && (
+        <Card>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 18, fontWeight: '900', color: colors.navy }}>Resources</Text>
+          {resources.length === 0 ? <Empty title="No resources added" message="PDFs, videos, audio and documents attached by the admin will appear here." /> : resources.map(resource => (
+            <View key={api.idOf(resource)} style={{ padding: 13, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ fontFamily: colors.fontFamily, fontWeight: '900', color: colors.navy }}>{resource.title || resource.name}</Text>
+              <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted, marginTop: 3 }}>{resource.resource_type || resource.type || 'Resource'}</Text>
+            </View>
+          ))}
+        </Card>
+      )}
+
+      {tab === 'reviews' && (
+        <Card>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 18, fontWeight: '900', color: colors.navy }}>Discussions & Reviews</Text>
+          {reviews.length === 0 ? <Empty title="No reviews yet" message="Be the first learner to review this course." /> : reviews.map(review => (
+            <View key={api.idOf(review)} style={{ paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: colors.border }}>
+              <Text style={{ fontFamily: colors.fontFamily, fontWeight: '900', color: colors.navy }}>{review.user_name || 'Learner'} · {review.rating} ★</Text>
+              <Text style={{ fontFamily: colors.fontFamily, color: colors.muted, marginTop: 5 }}>{review.review}</Text>
+            </View>
+          ))}
+        </Card>
+      )}
+
+      <View style={{ flexDirection: mobile ? 'column' : 'row', gap: 10, justifyContent: 'space-between', alignItems: mobile ? 'stretch' : 'center' }}>
+        <Button title={bookmarked ? '🔖 Saved' : '🔖 Save Course'} variant="secondary" onPress={bookmark} />
+        {pct >= 100 && <Button title="🎓 Get Certificate" variant="success" onPress={certificate} />}
+      </View>
+        </View>
+        {!mobile && <CourseDetailsPanel course={course} modules={modules} lessons={lessons} quizzes={quizzes} resources={resources} pct={pct} onContinue={continueLearning} />}
+      </View>
+    </AppShell>
+  );
 }

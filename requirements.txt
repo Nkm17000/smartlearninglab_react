@@ -10,4 +10,8 @@ requests==2.32.4
 
 reportlab==4.4.3
 
+python-multipart==0.0.20
+
 pypdf==5.9.0
+
+PyMuPDF==1.26.4
