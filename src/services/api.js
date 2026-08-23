@@ -9,7 +9,7 @@ const browserDefaultBaseUrl = (() => {
   const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
   return isLocal ? 'http://127.0.0.1:8000/api/v1' : 'https://smartlearninglab.onrender.com/api/v1';
 })();
-export const BASE_URL = (configuredBaseUrl || browserDefaultBaseUrl).replace(/\/$/, '');
+export const BASE_URL = (Platform.OS === 'web' ? browserDefaultBaseUrl : (configuredBaseUrl || browserDefaultBaseUrl)).replace(/\/$/, '');
 const TOKEN_KEY='sll_token', USER_KEY='sll_user', OFFLINE_QUEUE_KEY='sll_offline_queue';
 
 function humanizeApiMessage(path, method, data) {
@@ -91,23 +91,15 @@ async function request(path, options={}) {
     ...(token?{Authorization:`Bearer ${token}`}:{})
   };
 
-  // Render free/web services can take 30-60+ seconds to wake from an idle
-  // state. Authentication endpoints must not be aborted after 20 seconds,
-  // otherwise registration/reset-email requests appear to fail even though
-  // the backend is still waking up.
-  const isAuthRequest=/^\/auth\//.test(path.split('?')[0]);
-  const requestTimeoutMs=isAuthRequest ? 90000 : 30000;
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),requestTimeoutMs);
+  const timeout=setTimeout(()=>controller.abort(),20000);
   let response;
 
   try {
     response=await fetch(`${BASE_URL}${path}`,{...cleanOptions,headers,signal:controller.signal});
   } catch(e) {
     const msg=e?.name==='AbortError'
-      ? (isAuthRequest
-          ? 'Authentication request timed out while waiting for the backend. Please try again.'
-          : 'Backend request timed out. Check FastAPI.')
+      ? 'Backend request timed out. Check FastAPI.'
       : `Cannot reach backend at ${BASE_URL}. ${e?.message||''}`;
     if(notifyError) notifyApp('error',msg,5000);
     throw new Error(msg);
@@ -224,6 +216,7 @@ export const api={
  getStoredUser:async()=>{const v=await AsyncStorage.getItem(USER_KEY);return v?JSON.parse(v):null},
  get:p=>request(p),post:(p,b)=>request(p,{method:'POST',body:JSON.stringify(b)}),put:(p,b)=>request(p,{method:'PUT',body:JSON.stringify(b)}),del:p=>request(p,{method:'DELETE'}),
 
+ storageHealth:()=>request('/storage/health'),
  adminDashboard:()=>request('/admin/dashboard'),
  courses:()=>request('/admin/courses'),
  course:id=>request(`/admin/courses/${id}`),
