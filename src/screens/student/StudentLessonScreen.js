@@ -84,7 +84,6 @@ export default function StudentLessonScreen({
   onOpenLesson,
 }) {
   const [lesson, setLesson] = useState(null);
-  const [courseData, setCourseData] = useState(null);
   const [progress, setProgress] = useState(null);
   const [note, setNote] = useState('');
   const [savedNote, setSavedNote] = useState(null);
@@ -96,23 +95,11 @@ export default function StudentLessonScreen({
   const load = async () => {
     try {
       setError('');
-      const [lessonData, progressData, notes, overview] = await Promise.all([
-        api.studentLesson(lessonId),
-        api.courseProgress(courseId),
-        api.notes(),
-        api.courseOverview(courseId),
-      ]);
-
+      const lessonData = await api.lessonView(lessonId);
       setLesson(lessonData);
-      setProgress(progressData);
-      setCourseData(overview);
-
-      const existing = api
-        .listOf(notes)
-        .find((item) => String(item.lesson_id || '') === String(lessonId));
-
-      setSavedNote(existing || null);
-      setNote(existing?.content || existing?.note || '');
+      setProgress(lessonData.progress || null);
+      setSavedNote(lessonData.note || null);
+      setNote(lessonData.note?.content || lessonData.note?.note || '');
     } catch (e) {
       setError(e?.message || 'Unable to load this lesson.');
     }
@@ -123,20 +110,9 @@ export default function StudentLessonScreen({
   }, [lessonId, courseId]);
 
   const orderedLessons = useMemo(() => {
-    const modules = courseData?.modules || [];
-    const allLessons = courseData?.lessons || [];
-
-    return modules
-      .slice()
-      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
-      .flatMap((module) =>
-        allLessons
-          .filter(
-            (item) => String(item.topic_id) === String(api.idOf(module))
-          )
-          .sort((a, b) => Number(a.order || 0) - Number(b.order || 0))
-      );
-  }, [courseData]);
+    const nav = Array.isArray(lesson?.navigation) ? lesson.navigation : [];
+    return nav.slice().sort((a,b) => (Number(a.topic_order||0)-Number(b.topic_order||0)) || (Number(a.order||0)-Number(b.order||0)));
+  }, [lesson]);
 
   const currentIndex = orderedLessons.findIndex(
     (item) => String(api.idOf(item)) === String(lessonId)

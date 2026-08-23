@@ -6,14 +6,38 @@ import {colors} from '../../theme';
 
 function Option({letter,text,selected,onPress,disabled}){return <Pressable disabled={disabled} onPress={onPress} style={({pressed})=>({flexDirection:'row',alignItems:'center',gap:11,borderWidth:1.3,borderColor:selected?colors.primary:colors.border,backgroundColor:selected?colors.blueSoft:'#fff',borderRadius:13,padding:13,marginBottom:9,opacity:pressed?.78:1})}><View style={{width:32,height:32,borderRadius:10,alignItems:'center',justifyContent:'center',backgroundColor:selected?colors.primary:'#F7F7FB',borderWidth:1,borderColor:selected?colors.primary:colors.border}}><Text style={{fontFamily:colors.fontFamily,fontWeight:'900',color:selected?'#fff':colors.navy}}>{letter}</Text></View><Text style={{fontFamily:colors.fontFamily,flex:1,fontSize:13,fontWeight:selected?'900':'700',color:colors.navy,lineHeight:20}}>{text}</Text>{selected&&<Text style={{fontSize:18,color:colors.primary}}>✓</Text>}</Pressable>}
 
-export default function StudentQuizScreen({quizId,onBack,backLabel='Back to Quizzes'}){
- const {width}=useWindowDimensions(); const mobile=width<820; const [quiz,setQuiz]=useState(null),[questions,setQuestions]=useState([]),[answers,setAnswers]=useState({}),[current,setCurrent]=useState(0),[attempt,setAttempt]=useState(null),[result,setResult]=useState(null),[error,setError]=useState(''),[busy,setBusy]=useState(false);
- const load=async()=>{try{setError('');const [q,qs]=await Promise.all([api.studentQuiz(quizId),api.quizQuestions(quizId)]);setQuiz(q);setQuestions(api.listOf(qs))}catch(e){setError(e?.message||'Unable to open this quiz.')}};
+export default function StudentQuizScreen({quizId,onBack,backLabel="Back to Quizzes"}) {
+ const {width}=useWindowDimensions();
+ const mobile=width<820;
+ const [quiz,setQuiz]=useState(null);
+ const [questions,setQuestions]=useState([]);
+ const [attemptMeta,setAttemptMeta]=useState(null);
+ const [answers,setAnswers]=useState({});
+ const [current,setCurrent]=useState(0);
+ const [attempt,setAttempt]=useState(null);
+ const [result,setResult]=useState(null);
+ const [error,setError]=useState('');
+ const [busy,setBusy]=useState(false);
+ const load=async()=>{
+   try{
+     setError('');
+     const bundle=await api.quizBundle(quizId);
+     setQuiz(bundle?.quiz||null);
+     setQuestions(api.listOf(bundle?.questions));
+     setAttemptMeta(bundle||null);
+     setAnswers({});
+     setCurrent(0);
+     setAttempt(null);
+     setResult(null);
+   }catch(e){
+     setError(e?.message||'Unable to open this quiz.');
+   }
+ };
  useEffect(()=>{load()},[quizId]);
  const answered=useMemo(()=>Object.keys(answers).length,[answers]); const completion=questions.length?Math.round(answered/questions.length*100):0; const q=questions[current];
  if(error)return <AppShell><ErrorState title="Quiz could not load" message={error} onRetry={load}/></AppShell>;
  if(!quiz)return <AppShell><Loading label="Opening quiz…"/></AppShell>;
- const start=async()=>{setBusy(true);try{const a=await api.startQuiz(quizId);setAttempt(a)}catch(e){Alert.alert('Quiz',e.message)}finally{setBusy(false)}};
+ const start=async()=>{if(attemptMeta && attemptMeta.can_start===false){Alert.alert('Quiz','Maximum attempts reached for this quiz.');return;}setBusy(true);try{const a=await api.startQuiz(quizId);setAttempt(a)}catch(e){Alert.alert('Quiz',e.message)}finally{setBusy(false)}};
  const submit=async()=>{try{if(!attempt){Alert.alert('Quiz','Start the quiz first.');return}if(answered<questions.length){Alert.alert('Almost there',`Please answer all ${questions.length} questions before submitting.`);return}setBusy(true);const r=await api.submitQuiz(quizId,{attempt_id:attempt.attempt_id,answers});setResult(r)}catch(e){Alert.alert('Submit failed',e.message)}finally{setBusy(false)}};
  if(result){
   const details=Array.isArray(result.details)?result.details:[];
@@ -37,7 +61,7 @@ export default function StudentQuizScreen({quizId,onBack,backLabel='Back to Quiz
    <View style={{flexDirection:mobile?'column':'row',gap:14,alignItems:'stretch'}}>
      <View style={{flex:1}}>
        <Card style={{backgroundColor:colors.hero,borderColor:colors.hero,padding:20}}><View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'flex-start',gap:10}}><View style={{flex:1}}><Text style={{fontFamily:colors.fontFamily,fontSize:10,fontWeight:'900',color:'#AFA8FF',letterSpacing:1.1}}>TEST SERIES • QUIZ</Text><Text style={{fontFamily:colors.fontFamily,fontSize:24,fontWeight:'900',color:'#fff',marginTop:5}}>{quiz.title||quiz.name}</Text><Text style={{fontFamily:colors.fontFamily,color:'#D6D8E2',fontSize:11,marginTop:5}}>{questions.length} Questions · Pass {quiz.passing_percentage||60}%</Text></View>{attempt&&<Button title={busy?'Submitting…':'Submit Quiz'} onPress={submit} disabled={busy}/>}</View></Card>
-       {!attempt&&<Card><Text style={{fontFamily:colors.fontFamily,fontSize:19,fontWeight:'900',color:colors.navy}}>Ready to test your knowledge?</Text><Text style={{fontFamily:colors.fontFamily,color:colors.muted,lineHeight:20,marginTop:5}}>Answer every question and submit when you are ready.</Text><View style={{flexDirection:'row',gap:8,flexWrap:'wrap',marginTop:14}}><Badge tone="purple">{questions.length} Questions</Badge><Badge tone="orange">{quiz.duration_minutes||20} Minutes</Badge><Badge tone="green">{quiz.passing_percentage||60}% Pass</Badge></View><Button title={busy?'Starting…':'Start Quiz'} onPress={start} disabled={busy} style={{marginTop:18,width:'100%'}}/></Card>}
+       {!attempt&&<Card><Text style={{fontFamily:colors.fontFamily,fontSize:19,fontWeight:'900',color:colors.navy}}>Ready to test your knowledge?</Text><Text style={{fontFamily:colors.fontFamily,color:colors.muted,lineHeight:20,marginTop:5}}>Answer every question and submit when you are ready.</Text><View style={{flexDirection:'row',gap:8,flexWrap:'wrap',marginTop:14}}><Badge tone="purple">{questions.length} Questions</Badge><Badge tone="orange">{quiz.duration_minutes||20} Minutes</Badge><Badge tone="green">{quiz.passing_percentage||60}% Pass</Badge></View><Button title={attemptMeta?.can_start===false?'Maximum attempts reached':(busy?'Starting…':'Start Quiz')} onPress={start} disabled={busy||attemptMeta?.can_start===false} style={{marginTop:18,width:'100%'}}/></Card>}
        {attempt&&q&&<Card style={{padding:20}}><View style={{flexDirection:'row',justifyContent:'space-between',alignItems:'center'}}><Text style={{fontFamily:colors.fontFamily,fontSize:11,color:colors.muted}}>Question {current+1} of {questions.length}</Text><Text style={{fontFamily:colors.fontFamily,fontSize:11,fontWeight:'900',color:colors.primary}}>1 Point</Text></View><Text style={{fontFamily:colors.fontFamily,fontSize:19,fontWeight:'900',color:colors.navy,lineHeight:27,marginTop:14}}>{q.question}</Text><View style={{marginTop:16}}>{(q.options||[]).map((o,oi)=>{const label=typeof o==='object'?(o.text||o.label||o.value||'Option'):String(o);return <Option key={oi} letter={String.fromCharCode(65+oi)} text={label} selected={String(answers[api.idOf(q)])===String(oi)} onPress={()=>setAnswers(prev=>({...prev,[api.idOf(q)]:oi}))}/>})}</View><View style={{flexDirection:'row',justifyContent:'space-between',gap:10,marginTop:8}}><Button title="← Previous" variant="secondary" onPress={()=>setCurrent(Math.max(0,current-1))} disabled={current===0}/>{current<questions.length-1?<Button title="Next Question →" onPress={()=>setCurrent(Math.min(questions.length-1,current+1))}/>:<Button title={busy?'Submitting…':'Submit Quiz'} onPress={submit} disabled={busy||answered<questions.length}/>}</View></Card>}
      </View>
      <View style={{width:mobile?'100%':250}}>

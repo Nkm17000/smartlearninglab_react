@@ -51,6 +51,10 @@ function cacheTtlMs(path) {
   if (p === '/interview/topics') return 60 * 60 * 1000;
   if (p === '/personalized/path') return 2 * 60 * 1000;
   if (p === '/profile' || p === '/auth/me') return 60 * 1000;
+  if (/^\/lessons\/[^/]+$/.test(p)) return 60 * 1000;
+  if (/^\/quizzes\/[^/]+\/bundle$/.test(p)) return 60 * 1000;
+  if (p === '/learning/summary') return 30 * 1000;
+  if (p === '/analytics/summary') return 60 * 1000;
 
   // Safe default for any other GET
   return 15 * 1000;
@@ -391,6 +395,7 @@ export const api={
  studentModules:id=>request(`/courses/${id}/modules`),
  studentLessons:mid=>request(`/modules/${mid}/lessons`),
  studentLesson:id=>request(`/lessons/${id}`),
+ lessonView:id=>request(`/lessons/${id}`),
  enroll:id=>request(`/courses/${id}/enroll`,{method:'POST'}),
  enrollments:()=>request('/enrollments'),
  progress:()=>request('/progress'),
@@ -399,11 +404,13 @@ export const api={
  quizzesForCourse:id=>request(`/quizzes?course_id=${encodeURIComponent(id)}`),
  studentQuizzes:()=>request('/quizzes'),
  studentQuiz:id=>request(`/quizzes/${id}`),
+ quizBundle:id=>request(`/quizzes/${id}/bundle`),
  quizQuestions:id=>request(`/quizzes/${id}/questions`),
  startQuiz:id=>request(`/quizzes/${id}/start`,{method:'POST'}),
  submitQuiz:(id,b)=>request(`/quizzes/${id}/submit`,{method:'POST',body:JSON.stringify(b)}),
  quizResults:id=>request(`/quizzes/${id}/results`),
  allResults:()=>request('/results'),
+ learningSummary:()=>request('/learning/summary'),
  notes:()=>request('/notes'),
  addNote:b=>request('/notes',{method:'POST',body:JSON.stringify(b)}),
  updateNote:(id,b)=>request(`/notes/${id}`,{method:'PUT',body:JSON.stringify(b)}),
@@ -426,6 +433,15 @@ export const api={
  reviewFlashcard:(id,b)=>request(`/flashcards/${id}/review`,{method:'POST',body:JSON.stringify(b)}),
  deleteFlashcard:id=>request(`/flashcards/${id}`,{method:'DELETE'}),
  advancedAnalytics:()=>request('/analytics/advanced'),
+ analyticsSummary:async()=>{
+    try {
+      return await request('/analytics/summary');
+    } catch (e) {
+      // Backward-compatible fallback during rolling deployments.
+      const [basic, advanced] = await Promise.all([request('/analytics'), request('/analytics/advanced')]);
+      return {basic, advanced};
+    }
+  },
  interviewTopics:()=>request('/interview/topics'),
  interviewSession:b=>request('/interview/session',{method:'POST',body:JSON.stringify(b)}),
  interviewEvaluate:b=>request('/interview/evaluate',{method:'POST',body:JSON.stringify(b)}),
