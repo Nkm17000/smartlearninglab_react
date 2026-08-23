@@ -75,50 +75,13 @@ function errorMessage(data, status) {
   return String(m);
 }
 
-async function request(path, options={}) {
-  const token=await AsyncStorage.getItem(TOKEN_KEY);
-  const method=String(options.method||'GET').toUpperCase();
-  const notifySuccess = options.notifySuccess !== false && method !== 'GET';
-  const notifyError = options.notifyError !== false;
-  const cleanOptions={...options};
-  delete cleanOptions.notifySuccess;
-  delete cleanOptions.notifyError;
-
-  const headers={
-    Accept:'application/json',
-    ...(cleanOptions.body!==undefined?{'Content-Type':'application/json'}:{}),
-    ...(cleanOptions.headers||{}),
-    ...(token?{Authorization:`Bearer ${token}`}:{})
-  };
-
-  const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),20000);
-  let response;
-
-  try {
-    response=await fetch(`${BASE_URL}${path}`,{...cleanOptions,headers,signal:controller.signal});
-  } catch(e) {
-    const msg=e?.name==='AbortError'
-      ? 'Backend request timed out. Check FastAPI.'
-      : `Cannot reach backend at ${BASE_URL}. ${e?.message||''}`;
-    if(notifyError) notifyApp('error',msg,5000);
-    throw new Error(msg);
-  } finally {
-    clearTimeout(timeout);
-  }
-
-  const raw=await response.text();
-  let data=null;
-  try { data=raw?JSON.parse(raw):null; } catch { data=raw; }
-
-  if(!response.ok) {
-    const m=errorMessage(data,response.status);
-    if(notifyError) notifyApp('error',m,5000);
-    throw new Error(m);
-  }
-
-  if(notifySuccess) notifyApp('success',humanizeApiMessage(path,method,data));
-  return data;
+const GET_CACHE=new Map(); const GET_INFLIGHT=new Map();
+export function clearApiCache(){GET_CACHE.clear();GET_INFLIGHT.clear();}
+async function request(path, options={}){
+ const token=await AsyncStorage.getItem(TOKEN_KEY); const method=String(options.method||'GET').toUpperCase(); const ttl=method==='GET'?Number(options.cacheTTL||0):0; const key=`${token||'public'}:${path}`;
+ if(method==='GET'&&ttl>0){const c=GET_CACHE.get(key);if(c&&c.expiresAt>Date.now())return c.data;const p=GET_INFLIGHT.get(key);if(p)return p;}
+ const run=async()=>{const notifySuccess=options.notifySuccess!==false&&method!=='GET';const notifyError=options.notifyError!==false;const o={...options};delete o.notifySuccess;delete o.notifyError;delete o.cacheTTL;const headers={Accept:'application/json',...(o.body!==undefined?{'Content-Type':'application/json'}:{}),...(o.headers||{}),...(token?{Authorization:`Bearer ${token}`}:{})};const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);let response;try{response=await fetch(`${BASE_URL}${path}`,{...o,headers,signal:controller.signal});}catch(e){const msg=e?.name==='AbortError'?'Backend request timed out. Check FastAPI.':`Cannot reach backend at ${BASE_URL}. ${e?.message||''}`;if(notifyError)notifyApp('error',msg,5000);throw new Error(msg);}finally{clearTimeout(timeout);}const raw=await response.text();let data=null;try{data=raw?JSON.parse(raw):null}catch{data=raw;}if(!response.ok){const m=errorMessage(data,response.status);if(notifyError)notifyApp('error',m,5000);throw new Error(m);}if(notifySuccess)notifyApp('success',humanizeApiMessage(path,method,data));if(method!=='GET')clearApiCache();if(method==='GET'&&ttl>0)GET_CACHE.set(key,{data,expiresAt:Date.now()+ttl});return data;};
+ if(method==='GET'&&ttl>0){const p=run().finally(()=>GET_INFLIGHT.delete(key));GET_INFLIGHT.set(key,p);return p;} return run();
 }
 
 async function upload(path, file, fields={}) {
@@ -196,7 +159,7 @@ export async function setStoredAuth(token, user=null) {
 }
 
 export async function clearStoredAuth() {
-  await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+  await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]); clearApiCache();
 }
 
 export const api={
@@ -262,7 +225,7 @@ export const api={
  students:()=>request('/admin/students'),
  studentStatus:(id,active)=>request(`/admin/students/${id}/status`,{method:'PUT',body:JSON.stringify({is_active:active})}),
 
- studentDashboard:()=>request('/dashboard'),
+ home:()=>request('/home?limit=10',{cacheTTL:5000,notifyError:false}),
  lessonResources:id=>request(`/lessons/${id}/resources`),
  watchProgress:(id,b)=>request(`/lessons/${id}/watch-progress`,{method:'POST',body:JSON.stringify(b)}),
  getWatchProgress:id=>request(`/lessons/${id}/watch-progress`),
@@ -303,10 +266,8 @@ export const api={
  adminStatus:(id,active)=>request(`/admin/users/admins/${id}/status`,{method:'PUT',body:JSON.stringify({is_active:active})}),
  adminDelete:id=>request(`/admin/users/admins/${id}`,{method:'DELETE'}),
 
- studentCourses:(params={})=>{const q=new URLSearchParams();Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=='')q.set(k,String(v))});return request(`/courses${q.toString()?`?${q}`:''}`)},
- catalogCategories:()=>request('/catalog/categories'),
- featuredCatalog:(limit=8)=>request(`/catalog/featured?limit=${limit}`),
- courseOverview:id=>request(`/courses/${id}/overview`),
+ studentCourses:(params={})=>{const q=new URLSearchParams();Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=='')q.set(k,String(v))});return request(`/courses${q.toString()?`?${q}`:''}`,{cacheTTL:5000,notifyError:false})},
+ courseOverview:id=>request(`/courses/${id}/overview`,{cacheTTL:10000,notifyError:false}),
  studentCourse:id=>request(`/courses/${id}`),
  studentModules:id=>request(`/courses/${id}/modules`),
  studentLessons:mid=>request(`/modules/${mid}/lessons`),
@@ -314,10 +275,9 @@ export const api={
  enroll:id=>request(`/courses/${id}/enroll`,{method:'POST'}),
  enrollments:()=>request('/enrollments'),
  progress:()=>request('/progress'),
- courseProgress:id=>request(`/courses/${id}/progress`),
  completeLesson:id=>request(`/lessons/${id}/complete`,{method:'POST'}),
  quizzesForCourse:id=>request(`/quizzes?course_id=${encodeURIComponent(id)}`),
- studentQuizzes:()=>request('/quizzes'),
+ studentQuizzes:()=>request('/quizzes',{cacheTTL:5000,notifyError:false}),
  studentQuiz:id=>request(`/quizzes/${id}`),
  quizQuestions:id=>request(`/quizzes/${id}/questions`),
  startQuiz:id=>request(`/quizzes/${id}/start`,{method:'POST'}),
@@ -337,7 +297,7 @@ export const api={
  aiGenerateQuiz:b=>request('/admin/ai/generate-quiz',{method:'POST',body:JSON.stringify(b)}),
  aiSaveQuiz:b=>request('/admin/ai/generate-quiz/save',{method:'POST',body:JSON.stringify(b)}),
  ragTutor:b=>request('/ai/tutor/rag',{method:'POST',body:JSON.stringify(b)}),
- personalizedPath:()=>request('/personalized/path'),
+ learningSummary:()=>request('/learning/summary',{cacheTTL:5000,notifyError:false}),
  adaptiveTest:b=>request('/adaptive/tests',{method:'POST',body:JSON.stringify(b)}),
  adaptiveSubmit:b=>request('/adaptive/tests/submit',{method:'POST',body:JSON.stringify(b)}),
  flashcards:()=>request('/flashcards'),

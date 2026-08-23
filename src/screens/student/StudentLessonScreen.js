@@ -96,15 +96,14 @@ export default function StudentLessonScreen({
   const load = async () => {
     try {
       setError('');
-      const [lessonData, progressData, notes, overview] = await Promise.all([
+      const [lessonData, notes, overview] = await Promise.all([
         api.studentLesson(lessonId),
-        api.courseProgress(courseId),
         api.notes(),
         api.courseOverview(courseId),
       ]);
 
       setLesson(lessonData);
-      setProgress(progressData);
+      setProgress(overview?.progress || null);
       setCourseData(overview);
 
       const existing = api

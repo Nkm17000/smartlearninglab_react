@@ -132,30 +132,12 @@ export default function StudentCourseScreen({ courseId, onBack, openQuiz, openLe
   const load = async () => {
     try {
       setError('');
-      const results = await Promise.allSettled([
-        api.courseOverview(courseId),
-        api.courseProgress(courseId),
-        api.progress(),
-        api.reviews(courseId),
-        api.bookmarks(),
-      ]);
-      const [overview, courseProgress, allProgress, reviewResult, bookmarks] = results;
-      if (overview.status !== 'fulfilled') throw overview.reason;
-      setData(overview.value);
-      setProgress(courseProgress.status === 'fulfilled' ? courseProgress.value : null);
-      setCompleted(
-        allProgress.status === 'fulfilled'
-          ? api.listOf(allProgress.value)
-              .filter(x => String(x.course_id) === String(courseId) && x.completed)
-              .map(x => String(x.lesson_id))
-          : []
-      );
-      setReviews(reviewResult.status === 'fulfilled' ? api.listOf(reviewResult.value) : []);
-      setBookmarked(
-        bookmarks.status === 'fulfilled'
-          ? api.listOf(bookmarks.value).some(x => x.item_type === 'course' && String(x.item_id) === String(courseId))
-          : false
-      );
+      const overview = await api.courseOverview(courseId);
+      setData(overview);
+      setProgress(overview.progress || null);
+      setCompleted((overview.lessons || []).filter(x => x.completed).map(x => String(api.idOf(x))));
+      setReviews(api.listOf(overview.reviews));
+      setBookmarked(Boolean(overview.bookmarked));
     } catch (e) {
       setError(e?.message || 'Unable to open this course.');
     }
@@ -201,9 +183,8 @@ export default function StudentCourseScreen({ courseId, onBack, openQuiz, openLe
   const complete = async lesson => {
     try {
       await api.completeLesson(api.idOf(lesson));
-      const [p, all] = await Promise.all([api.courseProgress(courseId), api.progress()]);
-      setProgress(p);
-      setCompleted(api.listOf(all).filter(x => String(x.course_id) === String(courseId) && x.completed).map(x => String(x.lesson_id)));
+      setCompleted(prev => prev.includes(String(api.idOf(lesson))) ? prev : [...prev, String(api.idOf(lesson))]);
+      setProgress(prev => prev ? { ...prev, completed_lessons: Number(prev.completed_lessons || 0) + 1, percentage: prev.total_lessons ? Math.round((Number(prev.completed_lessons || 0) + 1) * 100 / prev.total_lessons) : 0 } : prev);
     } catch (e) {
       Alert.alert('Progress', e.message);
     }

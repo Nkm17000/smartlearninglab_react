@@ -6,7 +6,7 @@ import {colors} from '../../theme';
 
 export default function PersonalizedLearningScreen({openCourse,openAdaptive}){
  const [path,setPath]=useState(null),[adaptive,setAdaptive]=useState(null),[busy,setBusy]=useState(false),[error,setError]=useState('');
- const load=async()=>{try{setError('');setPath(await api.personalizedPath())}catch(e){setError(e?.message||'The personalized learning service is temporarily unavailable.')}};
+ const load=async()=>{try{setError('');const summary=await api.learningSummary();setPath(summary?.plan||{})}catch(e){setError(e?.message||'The personalized learning service is temporarily unavailable.')}};
  useEffect(()=>{load()},[]);
  const startAdaptive=async()=>{setBusy(true);try{setAdaptive(await api.adaptiveTest({count:10}))}catch(e){Alert.alert('Adaptive test',e.message)}finally{setBusy(false)}};
  if(error)return <AppShell><Header eyebrow="For you" title="Your Learning Plan" subtitle="Personalized recommendations based on your progress."/><ErrorState title="Learning plan is temporarily unavailable" message={error} onRetry={load}/><Card><Text style={{fontSize:18,fontWeight:'900',color:colors.navy}}>You can still keep learning</Text><Text style={{color:colors.muted,lineHeight:20,marginTop:5}}>Open My Learning or take a published test while we reconnect the recommendation service.</Text><View style={{flexDirection:'row',gap:8,flexWrap:'wrap',marginTop:14}}>{openAdaptive&&<Button title="Take adaptive test" onPress={openAdaptive}/>}</View></Card></AppShell>;
