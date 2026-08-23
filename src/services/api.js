@@ -12,6 +12,54 @@ const browserDefaultBaseUrl = (() => {
 export const BASE_URL = (Platform.OS === 'web' ? browserDefaultBaseUrl : (configuredBaseUrl || browserDefaultBaseUrl)).replace(/\/$/, '');
 const TOKEN_KEY='sll_token', USER_KEY='sll_user', OFFLINE_QUEUE_KEY='sll_offline_queue';
 
+// Lightweight client-side cache + request de-duplication.
+// MongoDB remains the source of truth; mutations clear the cache.
+const GET_CACHE = new Map();
+const GET_INFLIGHT = new Map();
+
+function cacheTtlMs(path) {
+  const p = path.split('?')[0];
+  // Fast-changing user state
+  if (p === '/progress' || /^\/courses\/[^/]+\/progress$/.test(p)) return 15 * 1000;
+  if (p === '/notifications') return 15 * 1000;
+  if (p === '/dashboard') return 30 * 1000;
+  if (p === '/home') return 30 * 1000;
+  if (p === '/results' || /^\/quizzes\/[^/]+\/results$/.test(p)) return 30 * 1000;
+  if (p === '/bookmarks') return 30 * 1000;
+  if (/^\/ai\/conversations\/[^/]+\/messages$/.test(p)) return 30 * 1000;
+  if (p === '/ai/conversations') return 30 * 1000;
+
+  // Medium-lived learning data
+  if (p === '/courses') return 60 * 1000;
+  if (/^\/courses\/[^/]+\/overview$/.test(p)) return 5 * 60 * 1000;
+  if (/^\/courses\/[^/]+$/.test(p)) return 5 * 60 * 1000;
+  if (p === '/quizzes' || p === '/questions') return 60 * 1000;
+  if (/^\/quizzes\/[^/]+\/questions$/.test(p)) return 5 * 60 * 1000;
+  if (p === '/flashcards' || p === '/flashcards/due') return 60 * 1000;
+  if (p === '/analytics') return 60 * 1000;
+  if (p === '/analytics/advanced') return 5 * 60 * 1000;
+  if (p === '/leaderboard') return 2 * 60 * 1000;
+  if (p === '/certificates' || p === '/badges') return 5 * 60 * 1000;
+  if (p === '/notes') return 30 * 1000;
+  if (p === '/enrollments') return 60 * 1000;
+  if (p === '/catalog/categories') return 15 * 60 * 1000;
+  if (p === '/catalog/featured') return 5 * 60 * 1000;
+  if (p === '/library/categories') return 15 * 60 * 1000;
+  if (p === '/library') return 5 * 60 * 1000;
+  if (p === '/community/posts') return 30 * 1000;
+  if (/^\/community\/posts\/[^/]+\/comments$/.test(p)) return 30 * 1000;
+  if (p === '/interview/topics') return 60 * 60 * 1000;
+  if (p === '/personalized/path') return 2 * 60 * 1000;
+  if (p === '/profile' || p === '/auth/me') return 60 * 1000;
+
+  // Safe default for any other GET
+  return 15 * 1000;
+}
+
+function invalidateGetCache() {
+  GET_CACHE.clear();
+}
+
 function humanizeApiMessage(path, method, data) {
   const p = path.split('?')[0];
   const exact = [
@@ -75,13 +123,80 @@ function errorMessage(data, status) {
   return String(m);
 }
 
-const GET_CACHE=new Map(); const GET_INFLIGHT=new Map();
-export function clearApiCache(){GET_CACHE.clear();GET_INFLIGHT.clear();}
-async function request(path, options={}){
- const token=await AsyncStorage.getItem(TOKEN_KEY); const method=String(options.method||'GET').toUpperCase(); const ttl=method==='GET'?Number(options.cacheTTL||0):0; const key=`${token||'public'}:${path}`;
- if(method==='GET'&&ttl>0){const c=GET_CACHE.get(key);if(c&&c.expiresAt>Date.now())return c.data;const p=GET_INFLIGHT.get(key);if(p)return p;}
- const run=async()=>{const notifySuccess=options.notifySuccess!==false&&method!=='GET';const notifyError=options.notifyError!==false;const o={...options};delete o.notifySuccess;delete o.notifyError;delete o.cacheTTL;const headers={Accept:'application/json',...(o.body!==undefined?{'Content-Type':'application/json'}:{}),...(o.headers||{}),...(token?{Authorization:`Bearer ${token}`}:{})};const controller=new AbortController();const timeout=setTimeout(()=>controller.abort(),20000);let response;try{response=await fetch(`${BASE_URL}${path}`,{...o,headers,signal:controller.signal});}catch(e){const msg=e?.name==='AbortError'?'Backend request timed out. Check FastAPI.':`Cannot reach backend at ${BASE_URL}. ${e?.message||''}`;if(notifyError)notifyApp('error',msg,5000);throw new Error(msg);}finally{clearTimeout(timeout);}const raw=await response.text();let data=null;try{data=raw?JSON.parse(raw):null}catch{data=raw;}if(!response.ok){const m=errorMessage(data,response.status);if(notifyError)notifyApp('error',m,5000);throw new Error(m);}if(notifySuccess)notifyApp('success',humanizeApiMessage(path,method,data));if(method!=='GET')clearApiCache();if(method==='GET'&&ttl>0)GET_CACHE.set(key,{data,expiresAt:Date.now()+ttl});return data;};
- if(method==='GET'&&ttl>0){const p=run().finally(()=>GET_INFLIGHT.delete(key));GET_INFLIGHT.set(key,p);return p;} return run();
+async function request(path, options={}) {
+  const token=await AsyncStorage.getItem(TOKEN_KEY);
+  const method=String(options.method||'GET').toUpperCase();
+  const isGet = method === 'GET';
+  const notifySuccess = options.notifySuccess !== false && !isGet;
+  const notifyError = options.notifyError !== false;
+  const cleanOptions={...options};
+  delete cleanOptions.notifySuccess;
+  delete cleanOptions.notifyError;
+
+  const cacheKey = isGet ? `${token ? token.slice(-16) : 'anon'}:${path}` : null;
+  if (isGet) {
+    const hit = GET_CACHE.get(cacheKey);
+    if (hit && hit.expiresAt > Date.now()) return hit.data;
+    if (hit) GET_CACHE.delete(cacheKey);
+    const pending = GET_INFLIGHT.get(cacheKey);
+    if (pending) return pending;
+  }
+
+  const execute = async () => {
+    const headers={
+      Accept:'application/json',
+      ...(cleanOptions.body!==undefined?{'Content-Type':'application/json'}:{}),
+      ...(cleanOptions.headers||{}),
+      ...(token?{Authorization:`Bearer ${token}`}:{})
+    };
+
+    const controller=new AbortController();
+    const timeout=setTimeout(()=>controller.abort(),20000);
+    let response;
+
+    try {
+      response=await fetch(`${BASE_URL}${path}`,{...cleanOptions,headers,signal:controller.signal});
+    } catch(e) {
+      const msg=e?.name==='AbortError'
+        ? 'Backend request timed out. Check FastAPI.'
+        : `Cannot reach backend at ${BASE_URL}. ${e?.message||''}`;
+      if(notifyError) notifyApp('error',msg,5000);
+      throw new Error(msg);
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    const raw=await response.text();
+    let data=null;
+    try { data=raw?JSON.parse(raw):null; } catch { data=raw; }
+
+    if(!response.ok) {
+      const m=errorMessage(data,response.status);
+      if(notifyError) notifyApp('error',m,5000);
+      throw new Error(m);
+    }
+
+    if(isGet) {
+      GET_CACHE.set(cacheKey,{data,expiresAt:Date.now()+cacheTtlMs(path)});
+    } else {
+      invalidateGetCache();
+    }
+
+    if(notifySuccess) notifyApp('success',humanizeApiMessage(path,method,data));
+    return data;
+  };
+
+  if (isGet) {
+    const pending = execute();
+    GET_INFLIGHT.set(cacheKey, pending);
+    try {
+      return await pending;
+    } finally {
+      GET_INFLIGHT.delete(cacheKey);
+    }
+  }
+
+  return execute();
 }
 
 async function upload(path, file, fields={}) {
@@ -132,6 +247,7 @@ async function upload(path, file, fields={}) {
       throw new Error(m);
     }
 
+    invalidateGetCache();
     notifyApp('success',humanizeApiMessage(path,'POST',data));
     return data;
   } catch(e) {
@@ -159,7 +275,7 @@ export async function setStoredAuth(token, user=null) {
 }
 
 export async function clearStoredAuth() {
-  await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]); clearApiCache();
+  await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
 }
 
 export const api={
@@ -225,7 +341,7 @@ export const api={
  students:()=>request('/admin/students'),
  studentStatus:(id,active)=>request(`/admin/students/${id}/status`,{method:'PUT',body:JSON.stringify({is_active:active})}),
 
- home:()=>request('/home?limit=10',{cacheTTL:5000,notifyError:false}),
+ studentDashboard:()=>request('/dashboard'),
  lessonResources:id=>request(`/lessons/${id}/resources`),
  watchProgress:(id,b)=>request(`/lessons/${id}/watch-progress`,{method:'POST',body:JSON.stringify(b)}),
  getWatchProgress:id=>request(`/lessons/${id}/watch-progress`),
@@ -266,8 +382,11 @@ export const api={
  adminStatus:(id,active)=>request(`/admin/users/admins/${id}/status`,{method:'PUT',body:JSON.stringify({is_active:active})}),
  adminDelete:id=>request(`/admin/users/admins/${id}`,{method:'DELETE'}),
 
- studentCourses:(params={})=>{const q=new URLSearchParams();Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=='')q.set(k,String(v))});return request(`/courses${q.toString()?`?${q}`:''}`,{cacheTTL:5000,notifyError:false})},
- courseOverview:id=>request(`/courses/${id}/overview`,{cacheTTL:10000,notifyError:false}),
+ studentHome:()=>request('/home'),
+ studentCourses:(params={})=>{const q=new URLSearchParams();Object.entries(params).forEach(([k,v])=>{if(v!==undefined&&v!==null&&v!=='')q.set(k,String(v))});return request(`/courses${q.toString()?`?${q}`:''}`)},
+ catalogCategories:()=>request('/catalog/categories'),
+ featuredCatalog:(limit=8)=>request(`/catalog/featured?limit=${limit}`),
+ courseOverview:id=>request(`/courses/${id}/overview`),
  studentCourse:id=>request(`/courses/${id}`),
  studentModules:id=>request(`/courses/${id}/modules`),
  studentLessons:mid=>request(`/modules/${mid}/lessons`),
@@ -275,9 +394,10 @@ export const api={
  enroll:id=>request(`/courses/${id}/enroll`,{method:'POST'}),
  enrollments:()=>request('/enrollments'),
  progress:()=>request('/progress'),
+ courseProgress:id=>request(`/courses/${id}/progress`),
  completeLesson:id=>request(`/lessons/${id}/complete`,{method:'POST'}),
  quizzesForCourse:id=>request(`/quizzes?course_id=${encodeURIComponent(id)}`),
- studentQuizzes:()=>request('/quizzes',{cacheTTL:5000,notifyError:false}),
+ studentQuizzes:()=>request('/quizzes'),
  studentQuiz:id=>request(`/quizzes/${id}`),
  quizQuestions:id=>request(`/quizzes/${id}/questions`),
  startQuiz:id=>request(`/quizzes/${id}/start`,{method:'POST'}),
@@ -297,7 +417,7 @@ export const api={
  aiGenerateQuiz:b=>request('/admin/ai/generate-quiz',{method:'POST',body:JSON.stringify(b)}),
  aiSaveQuiz:b=>request('/admin/ai/generate-quiz/save',{method:'POST',body:JSON.stringify(b)}),
  ragTutor:b=>request('/ai/tutor/rag',{method:'POST',body:JSON.stringify(b)}),
- learningSummary:()=>request('/learning/summary',{cacheTTL:5000,notifyError:false}),
+ personalizedPath:()=>request('/personalized/path'),
  adaptiveTest:b=>request('/adaptive/tests',{method:'POST',body:JSON.stringify(b)}),
  adaptiveSubmit:b=>request('/adaptive/tests/submit',{method:'POST',body:JSON.stringify(b)}),
  flashcards:()=>request('/flashcards'),

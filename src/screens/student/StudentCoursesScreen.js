@@ -63,8 +63,15 @@ export default function StudentCoursesScreen({ openCourse }) {
     try {
       setLoading(true);
       setError('');
-      const coursesResult = await api.studentCourses({ search: search.trim(), category, exam });
+      const [coursesResult, catalogResult] = await Promise.all([
+        api.studentCourses({ search: search.trim(), category, exam }),
+        api.catalogCategories(),
+      ]);
       setItems(api.listOf(coursesResult));
+      if (catalogResult) {
+        if (Array.isArray(catalogResult.categories) && catalogResult.categories.length) setCategories(catalogResult.categories);
+        if (Array.isArray(catalogResult.exams) && catalogResult.exams.length) setExams(catalogResult.exams);
+      }
     } catch (e) {
       setError(e?.message || 'Unable to load courses.');
     } finally {

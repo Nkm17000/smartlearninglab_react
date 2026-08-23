@@ -73,11 +73,18 @@ export default function StudentProgressScreen({ openCourse, openQuiz, openRoute 
       setLoading(true); setError('');
       // Load each section independently. A temporary failure in one analytics
       // endpoint must not blank the entire My Learning page.
-      const summary = await api.learningSummary();
-      setCourses(api.listOf(summary?.courses));
-      setProgress(api.listOf(summary?.progress));
-      setResults(api.listOf(summary?.results));
-      setPlan(summary?.plan || {});
+      const [c, p, r, path] = await Promise.allSettled([
+        api.studentCourses(), api.progress(), api.allResults(), api.personalizedPath()
+      ]);
+      if (c.status === 'fulfilled') setCourses(api.listOf(c.value));
+      if (p.status === 'fulfilled') setProgress(api.listOf(p.value));
+      if (r.status === 'fulfilled') setResults(api.listOf(r.value));
+      if (path.status === 'fulfilled') setPlan(path.value || {});
+
+      const failures = [c, p, r, path].filter(x => x.status === 'rejected');
+      if (failures.length === 4) {
+        throw failures[0].reason || new Error('Unable to load My Learning.');
+      }
     } catch (e) {
       setError(e?.message || 'Unable to load My Learning.');
     } finally { setLoading(false); }
