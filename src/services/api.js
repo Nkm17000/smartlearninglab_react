@@ -91,15 +91,23 @@ async function request(path, options={}) {
     ...(token?{Authorization:`Bearer ${token}`}:{})
   };
 
+  // Render free/web services can take 30-60+ seconds to wake from an idle
+  // state. Authentication endpoints must not be aborted after 20 seconds,
+  // otherwise registration/reset-email requests appear to fail even though
+  // the backend is still waking up.
+  const isAuthRequest=/^\/auth\//.test(path.split('?')[0]);
+  const requestTimeoutMs=isAuthRequest ? 90000 : 30000;
   const controller=new AbortController();
-  const timeout=setTimeout(()=>controller.abort(),20000);
+  const timeout=setTimeout(()=>controller.abort(),requestTimeoutMs);
   let response;
 
   try {
     response=await fetch(`${BASE_URL}${path}`,{...cleanOptions,headers,signal:controller.signal});
   } catch(e) {
     const msg=e?.name==='AbortError'
-      ? 'Backend request timed out. Check FastAPI.'
+      ? (isAuthRequest
+          ? 'Authentication request timed out while waiting for the backend. Please try again.'
+          : 'Backend request timed out. Check FastAPI.')
       : `Cannot reach backend at ${BASE_URL}. ${e?.message||''}`;
     if(notifyError) notifyApp('error',msg,5000);
     throw new Error(msg);
