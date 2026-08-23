@@ -2,7 +2,14 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Platform} from 'react-native';
 import { notifyApp } from './notifications';
 
-export const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
+const configuredBaseUrl = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_URL || '';
+const browserDefaultBaseUrl = (() => {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') return 'https://smartlearninglab.onrender.com/api/v1';
+  const host = String(window.location.hostname || '').toLowerCase();
+  const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '::1';
+  return isLocal ? 'http://127.0.0.1:8000/api/v1' : 'https://smartlearninglab.onrender.com/api/v1';
+})();
+export const BASE_URL = (configuredBaseUrl || browserDefaultBaseUrl).replace(/\/$/, '');
 const TOKEN_KEY='sll_token', USER_KEY='sll_user', OFFLINE_QUEUE_KEY='sll_offline_queue';
 
 function humanizeApiMessage(path, method, data) {
@@ -179,16 +186,25 @@ async function upload(path, file, fields={}) {
 const idOf=x=>String(x?._id??x?.id??'');
 const listOf=x=>Array.isArray(x)?x:(x?.items||x?.data||[]);
 
+// Authentication storage helpers are exported both as named functions and
+// through `api` so older screens/callbacks continue to work.
+export async function setStoredAuth(token, user=null) {
+  if (!token || typeof token !== 'string') throw new Error('OAuth login did not return a valid access token.');
+  await AsyncStorage.setItem(TOKEN_KEY, token);
+  if (user) await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+  return token;
+}
+
+export async function clearStoredAuth() {
+  await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+}
+
 export const api={
  BASE_URL,idOf,listOf,
  login:async(email,password)=>{const d=await request('/auth/login',{method:'POST',body:JSON.stringify({email,password})});await AsyncStorage.setItem(TOKEN_KEY,d.access_token);await AsyncStorage.setItem(USER_KEY,JSON.stringify(d.user));return d},
  // Store an OAuth-issued access token returned by the backend callback.
- setStoredAuth:async(token,user=null)=>{
-   if(!token) throw new Error('OAuth login did not return an access token.');
-   await AsyncStorage.setItem(TOKEN_KEY,token);
-   if(user) await AsyncStorage.setItem(USER_KEY,JSON.stringify(user));
-   return token;
- },
+ setStoredAuth,
+ clearStoredAuth,
  getStoredToken:async()=>AsyncStorage.getItem(TOKEN_KEY),
  profile:async()=>request('/profile',{notifySuccess:false,notifyError:false}),
  register:p=>request('/auth/register',{method:'POST',body:JSON.stringify(p)}),

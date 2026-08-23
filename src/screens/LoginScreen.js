@@ -38,7 +38,7 @@ export default function LoginScreen({onLoggedIn}){
            window.history.replaceState({},document.title,window.location.pathname);
            onLoggedIn(user);
          }catch(e){
-           await api.logout();
+           await api.clearStoredAuth();
            notifyApp('error',e?.message||'Social sign-in completed but the user session could not be created.',7000);
            window.history.replaceState({},document.title,window.location.pathname);
          }finally{
@@ -49,11 +49,11 @@ export default function LoginScreen({onLoggedIn}){
      }
 
      if(oauthError){
-       notifyApp('error',decodeURIComponent(oauthError),7000);
+       notifyApp('error',oauthError,7000);
        window.history.replaceState({},document.title,window.location.pathname);
      }
 
-     if(token){setResetToken(token);setMode('reset');}
+     if(token){setResetToken(String(token).trim());setMode('reset');}
      if(verified==='success'){
        setVerifiedState('success');
        setMode('login');
@@ -80,7 +80,7 @@ export default function LoginScreen({onLoggedIn}){
        const d=await api.register({name:name.trim(),email:email.trim(),password});
        setVerificationPending(true);
        setVerificationEmail(d.email||email.trim());
-       notifyApp('success','Registration request created. Please confirm your email to complete registration.',7000);
+       notifyApp('success',d.message||'Confirmation email sent. Please confirm your email to complete registration.',7000);
        return;
      }
      if(mode==='forgot'){
@@ -88,10 +88,13 @@ export default function LoginScreen({onLoggedIn}){
        setMode('login');
        return;
      }
-     await api.resetPassword(resetToken,newPassword);
+     if(!resetToken) throw new Error('The password reset link is missing or invalid. Please request a new reset email.');
+     if(newPassword.length<8) throw new Error('New password must be at least 8 characters.');
+     await api.resetPassword(resetToken.trim(),newPassword);
      setMode('login');
      setResetToken('');
      setNewPassword('');
+     notifyApp('success','Password reset successful. You can now sign in.',5000);
    }catch(e){
      // api.request already displays the detailed error toast.
    }finally{setBusy(false)}
@@ -122,7 +125,7 @@ export default function LoginScreen({onLoggedIn}){
        <Badge tone="pink">EMAIL CONFIRMATION REQUIRED</Badge>
        <Text style={{fontSize:36,fontWeight:'900',color:colors.navy,marginTop:10}}>Check your email</Text>
        <Text style={{fontSize:16,color:colors.muted,marginTop:8,marginBottom:22,lineHeight:24}}>
-         Your registration request was created successfully. We sent a confirmation link to <Text style={{fontWeight:'800',color:colors.navy}}>{verificationEmail}</Text>.
+         We sent a confirmation link to <Text style={{fontWeight:'800',color:colors.navy}}>{verificationEmail}</Text>. If you registered with this email before but did not confirm it, a new confirmation email has been sent.
        </Text>
        <Card>
          <Text style={{fontSize:21,fontWeight:'900',color:colors.navy,marginBottom:10}}>Please confirm on your mail for registration</Text>
