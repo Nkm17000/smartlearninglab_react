@@ -154,7 +154,7 @@ export default function AdminQuizzesScreen() {
             <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900' }}>
               Publish quizzes
             </Text>
-            <Text style={{ color: '#CBD5E1', marginTop: 4 }}>
+            <Text style={{ color: '#E9EAF3', marginTop: 4 }}>
               Published standalone quizzes appear in Test Series and on the student home page.
             </Text>
           </View>
@@ -211,7 +211,7 @@ export default function AdminQuizzesScreen() {
           const standalone = !quiz.course_id;
 
           return (
-            <Card key={id} style={{ backgroundColor: '#FAFCFF' }}>
+            <Card key={id} style={{ backgroundColor: '#FBFBFE' }}>
               <View
                 style={{
                   flexDirection: 'row',

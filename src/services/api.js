@@ -1,44 +1,137 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {Platform} from 'react-native';
+import { notifyApp } from './notifications';
 
-export const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || 'http://127.0.0.1:8000/api/v1';
-const TOKEN_KEY='sll_token', USER_KEY='sll_user';
+export const BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL || process.env.EXPO_PUBLIC_API_URL || 'http://127.0.0.1:8000/api/v1';
+const TOKEN_KEY='sll_token', USER_KEY='sll_user', OFFLINE_QUEUE_KEY='sll_offline_queue';
 
-async function request(path, options={}){
+function humanizeApiMessage(path, method, data) {
+  const p = path.split('?')[0];
+  const exact = [
+    [/^\/auth\/register$/, 'Registration request created successfully. Please confirm your email to complete registration.'],
+    [/^\/auth\/login$/, 'Login successful.'],
+    [/^\/auth\/forgot-password$/, 'Password reset email sent successfully.'],
+    [/^\/auth\/reset-password$/, 'Password reset successfully.'],
+    [/^\/auth\/register\/resend$/, 'Confirmation email sent successfully.'],
+    [/^\/auth\/verify-email\/request$/, 'Verification email sent successfully.'],
+    [/^\/auth\/verify-email$/, 'Email verified successfully.'],
+    [/^\/courses\/[^/]+\/enroll$/, 'Course enrollment completed successfully.'],
+    [/^\/lessons\/[^/]+\/complete$/, 'Lesson completed successfully.'],
+    [/^\/quizzes\/[^/]+\/start$/, 'Quiz started successfully.'],
+    [/^\/quizzes\/[^/]+\/submit$/, 'Quiz submitted successfully.'],
+    [/^\/adaptive\/tests$/, 'Mock test started successfully.'],
+    [/^\/adaptive\/tests\/submit$/, 'Mock test submitted successfully.'],
+    [/^\/certificates\/course\/[^/]+\/issue$/, 'Certificate generated successfully.'],
+    [/^\/notes$/, 'Note saved successfully.'],
+    [/^\/flashcards$/, 'Flashcard saved successfully.'],
+    [/^\/flashcards\/[^/]+\/review$/, 'Flashcard review saved successfully.'],
+    [/^\/bookmarks$/, 'Bookmark saved successfully.'],
+    [/^\/courses\/[^/]+\/reviews$/, 'Review submitted successfully.'],
+    [/^\/community\/posts$/, 'Post published successfully.'],
+    [/^\/community\/posts\/[^/]+\/comments$/, 'Comment added successfully.'],
+    [/^\/community\/posts\/[^/]+\/like$/, 'Like updated successfully.'],
+    [/^\/device-tokens$/, 'Device registered successfully.'],
+    [/^\/offline\/sync$/, 'Offline learning actions synced successfully.'],
+    [/^\/ai\/tutor\/rag$/, 'AI Tutor response generated successfully.'],
+    [/^\/ai\/speaking\/evaluate$/, 'Speaking evaluation completed successfully.'],
+    [/^\/ai\/mock-interview$/, 'Mock interview generated successfully.'],
+    [/^\/ai\/mock-interview\/evaluate$/, 'Interview evaluation completed successfully.'],
+    [/^\/ai\/personalized-quiz$/, 'Personalized quiz generated successfully.'],
+    [/^\/ai\/study-plan$/, 'Study plan generated successfully.'],
+    [/^\/admin\/ai\/course-from-pdf$/, 'PDF course generated successfully.'],
+    [/^\/admin\/ai\/course-from-pdf\/save$/, 'PDF course saved successfully.'],
+    [/^\/admin\/ai\/generate-course$/, 'AI course generated successfully.'],
+    [/^\/admin\/ai\/generate-course\/save$/, 'AI course saved successfully.'],
+    [/^\/admin\/ai\/generate-quiz$/, 'AI quiz generated successfully.'],
+    [/^\/admin\/ai\/generate-quiz\/save$/, 'AI quiz saved successfully.'],
+    [/^\/admin\/courses\/[^/]+\/publish$/, 'Course published successfully.'],
+    [/^\/admin\/courses\/[^/]+\/unpublish$/, 'Course unpublished successfully.'],
+    [/^\/admin\/quizzes\/[^/]+\/publish$/, 'Quiz published successfully.'],
+    [/^\/admin\/quizzes\/[^/]+\/unpublish$/, 'Quiz unpublished successfully.'],
+    [/^\/admin\/courses$/, 'Course created successfully.'],
+    [/^\/admin\/quizzes$/, 'Quiz created successfully.'],
+    [/^\/admin\/questions$/, 'Question saved successfully.'],
+    [/^\/admin\/users\/admins$/, 'Admin user saved successfully.'],
+    [/^\/admin\/students\/[^/]+\/status$/, 'Student status updated successfully.'],
+  ];
+  for (const [re, msg] of exact) if (re.test(p)) return msg;
+  if (method === 'DELETE') return 'Deleted successfully.';
+  if (method === 'PUT' || method === 'PATCH') return 'Updated successfully.';
+  if (method === 'POST') return data?.message || 'Operation completed successfully.';
+  return data?.message || 'Operation completed successfully.';
+}
+
+function errorMessage(data, status) {
+  let m = data?.detail || data?.message || (typeof data === 'string' ? data : `Request failed (${status})`);
+  if (Array.isArray(m)) m = m.map(x => x?.msg || String(x)).join(', ');
+  if (status === 409 && /email/i.test(String(m))) return String(m) || 'Email already exists. Please login or use another email.';
+  return String(m);
+}
+
+async function request(path, options={}) {
   const token=await AsyncStorage.getItem(TOKEN_KEY);
-  const headers={Accept:'application/json',...(options.body!==undefined?{'Content-Type':'application/json'}:{}),...(options.headers||{}),...(token?{Authorization:`Bearer ${token}`}:{})};
+  const method=String(options.method||'GET').toUpperCase();
+  const notifySuccess = options.notifySuccess !== false && method !== 'GET';
+  const notifyError = options.notifyError !== false;
+  const cleanOptions={...options};
+  delete cleanOptions.notifySuccess;
+  delete cleanOptions.notifyError;
+
+  const headers={
+    Accept:'application/json',
+    ...(cleanOptions.body!==undefined?{'Content-Type':'application/json'}:{}),
+    ...(cleanOptions.headers||{}),
+    ...(token?{Authorization:`Bearer ${token}`}:{})
+  };
+
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),20000);
   let response;
-  try{response=await fetch(`${BASE_URL}${path}`,{...options,headers,signal:controller.signal});}
-  catch(e){if(e?.name==='AbortError')throw new Error('Backend request timed out. Check FastAPI.');throw new Error(`Cannot reach backend at ${BASE_URL}. ${e?.message||''}`);}
-  finally{clearTimeout(timeout)}
-  const raw=await response.text(); let data=null; try{data=raw?JSON.parse(raw):null}catch{data=raw}
-  if(!response.ok){let m=data?.detail||data?.message||(typeof data==='string'?data:`Request failed (${response.status})`);if(Array.isArray(m))m=m.map(x=>x.msg||String(x)).join(', ');throw new Error(m)}
+
+  try {
+    response=await fetch(`${BASE_URL}${path}`,{...cleanOptions,headers,signal:controller.signal});
+  } catch(e) {
+    const msg=e?.name==='AbortError'
+      ? 'Backend request timed out. Check FastAPI.'
+      : `Cannot reach backend at ${BASE_URL}. ${e?.message||''}`;
+    if(notifyError) notifyApp('error',msg,5000);
+    throw new Error(msg);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  const raw=await response.text();
+  let data=null;
+  try { data=raw?JSON.parse(raw):null; } catch { data=raw; }
+
+  if(!response.ok) {
+    const m=errorMessage(data,response.status);
+    if(notifyError) notifyApp('error',m,5000);
+    throw new Error(m);
+  }
+
+  if(notifySuccess) notifyApp('success',humanizeApiMessage(path,method,data));
   return data;
 }
 
-async function upload(path, file, fields={}){
+async function upload(path, file, fields={}) {
   const token=await AsyncStorage.getItem(TOKEN_KEY);
   const form=new FormData();
   Object.entries(fields).forEach(([k,v])=>{if(v!==undefined&&v!==null)form.append(k,String(v))});
-  // Expo DocumentPicker returns a native-style asset on Android/iOS, but on
-  // web the asset must be appended as an actual Blob/File. Appending the
-  // whole asset object on web serializes it as "[object Object]", which
-  // FastAPI correctly rejects because it expects UploadFile.
+
   if (Platform.OS === 'web') {
-    let webFile = file?.file;
+    let webFile=file?.file;
     if (!(webFile instanceof Blob)) {
-      if (!file?.uri) throw new Error('The selected file has no URI. Please choose the PDF again.');
-      const blobResponse = await fetch(file.uri);
-      if (!blobResponse.ok) throw new Error('Unable to read the selected PDF in the browser.');
-      webFile = await blobResponse.blob();
+      if (!file?.uri) throw new Error('The selected file has no URI. Please choose the file again.');
+      const blobResponse=await fetch(file.uri);
+      if (!blobResponse.ok) throw new Error('Unable to read the selected file in the browser.');
+      webFile=await blobResponse.blob();
     }
-    const mime = file.mimeType || file.type || webFile.type || 'application/pdf';
+    const mime=file.mimeType||file.type||webFile.type||'application/octet-stream';
     if (typeof File !== 'undefined' && !(webFile instanceof File)) {
-      webFile = new File([webFile], file.name || 'upload.pdf', {type: mime});
+      webFile=new File([webFile],file.name||'upload',{type:mime});
     }
-    form.append('file', webFile, file.name || 'upload.pdf');
+    form.append('file',webFile,file.name||'upload');
   } else {
     form.append('file',{
       uri:file.uri,
@@ -46,15 +139,41 @@ async function upload(path, file, fields={}){
       type:file.mimeType||file.type||'application/octet-stream'
     });
   }
+
   const controller=new AbortController();
   const timeout=setTimeout(()=>controller.abort(),120000);
-  try{
-    const response=await fetch(`${BASE_URL}${path}`,{method:'POST',headers:{Accept:'application/json',...(token?{Authorization:`Bearer ${token}`}:{})},body:form,signal:controller.signal});
-    const raw=await response.text(); let data=null; try{data=raw?JSON.parse(raw):null}catch{data=raw}
-    if(!response.ok){const m=data?.detail||data?.message||(typeof data==='string'?data:`Upload failed (${response.status})`);throw new Error(Array.isArray(m)?m.map(x=>x.msg||String(x)).join(', '):m)}
+  try {
+    const response=await fetch(`${BASE_URL}${path}`,{
+      method:'POST',
+      headers:{
+        Accept:'application/json',
+        ...(token?{Authorization:`Bearer ${token}`}:{})
+      },
+      body:form,
+      signal:controller.signal
+    });
+    const raw=await response.text();
+    let data=null;
+    try { data=raw?JSON.parse(raw):null; } catch { data=raw; }
+
+    if(!response.ok) {
+      const m=errorMessage(data,response.status);
+      notifyApp('error',m,5000);
+      throw new Error(m);
+    }
+
+    notifyApp('success',humanizeApiMessage(path,'POST',data));
     return data;
-  }catch(e){if(e?.name==='AbortError')throw new Error('Upload timed out. Please try a smaller file or check the backend.');throw e}
-  finally{clearTimeout(timeout)}
+  } catch(e) {
+    if(e?.name==='AbortError') {
+      const msg='Upload timed out. Please try a smaller file or check the backend.';
+      notifyApp('error',msg,5000);
+      throw new Error(msg);
+    }
+    throw e;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 const idOf=x=>String(x?._id??x?.id??'');
@@ -63,10 +182,11 @@ const listOf=x=>Array.isArray(x)?x:(x?.items||x?.data||[]);
 export const api={
  BASE_URL,idOf,listOf,
  login:async(email,password)=>{const d=await request('/auth/login',{method:'POST',body:JSON.stringify({email,password})});await AsyncStorage.setItem(TOKEN_KEY,d.access_token);await AsyncStorage.setItem(USER_KEY,JSON.stringify(d.user));return d},
- register:async p=>{const d=await request('/auth/register',{method:'POST',body:JSON.stringify(p)});await AsyncStorage.setItem(TOKEN_KEY,d.access_token);await AsyncStorage.setItem(USER_KEY,JSON.stringify(d.user));return d},
+ register:p=>request('/auth/register',{method:'POST',body:JSON.stringify(p)}),
+ registerResend:email=>request('/auth/register/resend',{method:'POST',body:JSON.stringify({email})}),
  forgotPassword:email=>request('/auth/forgot-password',{method:'POST',body:JSON.stringify({email})}),
  resetPassword:(token,password)=>request('/auth/reset-password',{method:'POST',body:JSON.stringify({token,password})}),
- logout:()=>AsyncStorage.multiRemove([TOKEN_KEY,USER_KEY]),
+ logout:async()=>{await AsyncStorage.multiRemove([TOKEN_KEY,USER_KEY]);notifyApp('success','Logged out successfully.');},
  getStoredUser:async()=>{const v=await AsyncStorage.getItem(USER_KEY);return v?JSON.parse(v):null},
  get:p=>request(p),post:(p,b)=>request(p,{method:'POST',body:JSON.stringify(b)}),put:(p,b)=>request(p,{method:'PUT',body:JSON.stringify(b)}),del:p=>request(p,{method:'DELETE'}),
 
@@ -218,5 +338,22 @@ export const api={
  previewCertificateUrl:(certificateId)=>`${BASE_URL}/certificates/${encodeURIComponent(certificateId)}/preview`,
  downloadCertificateUrl:(certificateId)=>`${BASE_URL}/certificates/${encodeURIComponent(certificateId)}/pdf`,
  bulkQuiz:(b)=>request('/admin/bulk/quiz',{method:'POST',body:JSON.stringify(b)}),
- bulkCoursePdf:(file,fields={})=>upload('/admin/bulk/course-pdf',file,fields)
+ bulkCoursePdf:(file,fields={})=>upload('/admin/bulk/course-pdf',file,fields),
+  syncOffline:async()=>{
+    const q=JSON.parse(await AsyncStorage.getItem(OFFLINE_QUEUE_KEY)||'[]');
+    if(!q.length)return {synced:[],failed:[],remaining:0};
+    try{
+      const r=await request('/offline/sync',{method:'POST',body:JSON.stringify({actions:q})});
+      const failed=r.failed||[];
+      const failedIds=new Set(failed.map(x=>x.id));
+      const remaining=q.filter(x=>failedIds.has(x.id));
+      await AsyncStorage.setItem(OFFLINE_QUEUE_KEY,JSON.stringify(remaining));
+      return {...r,remaining:remaining.length};
+    }catch(e){
+      return {synced:[],failed:[],remaining:q.length,offline:true,message:e.message};
+    }
+  },
+  offlineQueueSize:async()=>JSON.parse(await AsyncStorage.getItem(OFFLINE_QUEUE_KEY)||'[]').length,
+
+
 };

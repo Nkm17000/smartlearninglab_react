@@ -248,7 +248,7 @@ export default function StudentCourseScreen({ courseId, onBack, openQuiz, openLe
       </Pressable>
 
       {/* Course hero — same visual language as the supplied course/quiz design */}
-      <Card style={{ backgroundColor: '#37217D', borderColor: '#37217D', padding: mobile ? 16 : 22, overflow: 'hidden' }}>
+      <Card style={{ backgroundColor: '#32217B', borderColor: '#32217B', padding: mobile ? 16 : 22, overflow: 'hidden' }}>
         <View style={{ flexDirection: mobile ? 'column' : 'row', gap: 20 }}>
           <View style={{ width: mobile ? '100%' : 136, height: mobile ? 170 : 136, borderRadius: 15, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: 58 }}>☕</Text>
@@ -261,7 +261,7 @@ export default function StudentCourseScreen({ courseId, onBack, openQuiz, openLe
               <Badge tone="purple">{course.category || 'General'}</Badge>
               <Badge tone="pink">{course.is_free === false ? 'PAID' : 'FREE'}</Badge>
             </View>
-            <Text style={{ fontFamily: colors.fontFamily, color: '#D9D4FF', fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginTop: 10 }}>COURSE</Text>
+            <Text style={{ fontFamily: colors.fontFamily, color: '#D6D0FF', fontSize: 10, fontWeight: '900', letterSpacing: 1.1, marginTop: 10 }}>COURSE</Text>
             <Text style={{ fontFamily: colors.fontFamily, color: '#fff', fontSize: mobile ? 24 : 28, fontWeight: '900', marginTop: 4 }}>{heroTitle}</Text>
             <Text style={{ fontFamily: colors.fontFamily, color: '#E4E2F4', fontSize: 12, lineHeight: 20, marginTop: 6 }}>{heroDescription}</Text>
 

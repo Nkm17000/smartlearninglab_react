@@ -13,7 +13,7 @@ function CourseCard({ course, onOpen, wide }) {
   return (
     <Pressable onPress={() => onOpen(api.idOf(course))} style={({ pressed }) => ({ flex: wide ? 1 : undefined, minWidth: wide ? 270 : 240, maxWidth: wide ? 390 : 330, opacity: pressed ? 0.94 : 1 })}>
       <Card style={{ padding: 0, overflow: 'hidden', height: 315 }}>
-        <View style={{ height: 105, backgroundColor: course.hero_color || '#37217D', alignItems: 'center', justifyContent: 'center' }}>
+        <View style={{ height: 105, backgroundColor: course.hero_color || '#32217B', alignItems: 'center', justifyContent: 'center' }}>
           <Text style={{ fontSize: 44 }}>{course.icon || '📚'}</Text>
         </View>
         <View style={{ padding: 14, flex: 1 }}>

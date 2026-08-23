@@ -1,9 +1,10 @@
 export const colors = {
+  // Core dashboard palette
   primary: '#5B3DF5',
   primaryDark: '#4528D9',
-  navy: '#111633',
+  navy: '#11143D',
   text: '#1B2145',
-  muted: '#6F7696',
+  muted: '#72789B',
   subtle: '#A3A8C2',
   background: '#F8F9FD',
   surface: '#FFFFFF',
@@ -25,4 +26,18 @@ export const colors = {
   gold: '#F7C948',
   shadow: '#171A3B',
   fontFamily: 'Poppins, Inter, Arial, sans-serif',
+  radiusSm: 10,
+  radiusMd: 14,
+  radiusLg: 18,
+  radiusXl: 22,
+};
+
+export const typography = {
+  display: 30,
+  h1: 28,
+  h2: 20,
+  h3: 16,
+  body: 14,
+  small: 12,
+  tiny: 10,
 };

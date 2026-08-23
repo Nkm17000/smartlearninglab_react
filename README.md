@@ -1,37 +1,39 @@
-# Smart Learning Lab — Frontend
+# Smart Learning Lab — New Design Final FE
 
-Expo / React Native Web frontend for Smart Learning Lab.
+This build keeps the latest Smart Learning Lab dashboard visual system as the
+source of truth for all screens and navigation.
 
-## Local development
+## Included
+
+- New dashboard-wide Poppins/Inter typography and purple/navy palette
+- Courses, Quizzes, My Learning, AI Tutor, Flashcards
+- Gamification and Mock Test
+- Admin course/quiz/PDF/library features
+- Student registration with email confirmation
+- Resend confirmation email
+- Forgot/reset password
+- Global success/error notifications
+- Robust API error handling
+- Existing API endpoint surface retained
+
+## Run
 
 ```powershell
 npm install
 npx expo start --web -c
 ```
 
-## Web production build
-
-```powershell
-npx expo export --platform web
-```
-
-The production web output is generated in `dist/`.
-
 ## Environment
 
-Copy `.env.example` to `.env` and set the backend URL. Never commit `.env`.
-
-Example:
-
 ```env
-EXPO_PUBLIC_API_URL=http://127.0.0.1:8000
+EXPO_PUBLIC_API_BASE_URL=http://127.0.0.1:8000/api/v1
 ```
 
-For Render, set `EXPO_PUBLIC_API_URL` in the Static Site environment variables to the deployed backend URL.
+For Render, set the variable to your deployed FastAPI API URL.
 
 ## Render
 
-Build command:
+Build:
 
 ```text
 npm ci && npx expo export --platform web
@@ -41,10 +43,4 @@ Publish directory:
 
 ```text
 dist
-```
-
-For client-side routing, add this Render rewrite:
-
-```text
-/*    /index.html    Rewrite
 ```

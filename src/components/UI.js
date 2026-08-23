@@ -49,7 +49,7 @@ export function Button({ title, onPress, variant='primary', disabled=false, styl
 }
 
 export function IconButton({ label, onPress, danger=false }) {
-  return <Pressable onPress={onPress} style={({pressed})=>[s.iconButton,{backgroundColor:danger?'#FFF1F4':'#F7F7FD',borderColor:danger?'#FFD4DE':colors.border,opacity: pressed ? 0.75 : 1}]}> 
+  return <Pressable onPress={onPress} style={({pressed})=>[s.iconButton,{backgroundColor:danger?'#FFF0F6':'#F7F7FD',borderColor:danger?'#FFD4DE':colors.border,opacity: pressed ? 0.75 : 1}]}> 
     <Text style={{fontFamily:ff,fontSize:13,fontWeight:'800',color:danger?colors.danger:colors.text}}>{label}</Text>
   </Pressable>;
 }
@@ -73,7 +73,7 @@ export function DropdownSelect({ label, value, options = [], onChange, placehold
     </Pressable>
     {open && <View style={{borderWidth:1,borderColor:colors.border,borderRadius:12,backgroundColor:'#fff',marginTop:5,overflow:'hidden'}}>
       <ScrollView style={{maxHeight:230}} nestedScrollEnabled>
-        {options.map(o=><Pressable key={String(o.value)} onPress={()=>{onChange(o.value);setOpen(false)}} style={{paddingHorizontal:14,paddingVertical:12,borderBottomWidth:1,borderBottomColor:'#F1F2F7',backgroundColor:String(o.value)===String(value)?colors.blueSoft:'#fff'}}>
+        {options.map(o=><Pressable key={String(o.value)} onPress={()=>{onChange(o.value);setOpen(false)}} style={{paddingHorizontal:14,paddingVertical:12,borderBottomWidth:1,borderBottomColor:'#F7F7FB',backgroundColor:String(o.value)===String(value)?colors.blueSoft:'#fff'}}>
           <Text style={{fontFamily:ff,fontWeight:String(o.value)===String(value)?'900':'700',color:String(o.value)===String(value)?colors.primary:colors.text}}>{o.label}</Text>
         </Pressable>)}
       </ScrollView>
@@ -82,7 +82,7 @@ export function DropdownSelect({ label, value, options = [], onChange, placehold
 }
 
 export function Badge({ children, tone='blue' }) {
-  const map={blue:[colors.blueSoft,colors.primary],green:[colors.greenSoft,colors.success],orange:[colors.orangeSoft,colors.warning],purple:[colors.purpleSoft,colors.purple],pink:[colors.pinkSoft,'#D72F75'],red:['#FFF1F4',colors.danger]};
+  const map={blue:[colors.blueSoft,colors.primary],green:[colors.greenSoft,colors.success],orange:[colors.orangeSoft,colors.warning],purple:[colors.purpleSoft,colors.purple],pink:[colors.pinkSoft,'#D72F75'],red:['#FFF0F6',colors.danger]};
   const [bg,fg]=map[tone]||map.blue;
   return <View style={{backgroundColor:bg,paddingHorizontal:10,paddingVertical:6,borderRadius:20,alignSelf:'flex-start'}}><Text style={{fontFamily:ff,color:fg,fontSize:11,fontWeight:'900'}}>{children}</Text></View>;
 }
@@ -123,10 +123,10 @@ export const s=StyleSheet.create({
  crumb:{fontFamily:ff,fontSize:12,color:colors.subtle,fontWeight:'700'},
  crumbActive:{color:colors.text},
  crumbSep:{color:colors.subtle,fontSize:18},
- card:{backgroundColor:'#fff',borderRadius:17,borderWidth:1,borderColor:colors.border,padding:18,marginBottom:14,shadowColor:colors.shadow,shadowOpacity:0.035,shadowRadius:10,shadowOffset:{width:0,height:4}},
- button:{minHeight:42,borderRadius:11,borderWidth:1,paddingHorizontal:16,paddingVertical:10,alignItems:'center',justifyContent:'center'},
+ card:{backgroundColor:'#fff',borderRadius:18,borderWidth:1,borderColor:colors.border,padding:18,marginBottom:14,shadowColor:colors.shadow,shadowOpacity:0.045,shadowRadius:12,shadowOffset:{width:0,height:4}},
+ button:{minHeight:44,borderRadius:12,borderWidth:1,paddingHorizontal:16,paddingVertical:10,alignItems:'center',justifyContent:'center'},
  iconButton:{borderWidth:1,borderRadius:10,paddingHorizontal:11,paddingVertical:8},
- input:{borderWidth:1,borderColor:colors.border,borderRadius:11,backgroundColor:'#fff',paddingHorizontal:13,paddingVertical:11,color:colors.text,fontFamily:ff},
+ input:{borderWidth:1,borderColor:colors.border,borderRadius:12,backgroundColor:'#fff',paddingHorizontal:13,paddingVertical:11,color:colors.text,fontFamily:ff},
  label:{fontFamily:ff,fontSize:12,fontWeight:'800',color:colors.text,marginBottom:6},
  wrap:{flexDirection:'row',flexWrap:'wrap',gap:8},
  chip:{borderWidth:1,borderColor:colors.border,borderRadius:20,paddingHorizontal:12,paddingVertical:8,backgroundColor:'#fff'},

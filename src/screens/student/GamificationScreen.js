@@ -10,13 +10,13 @@ const GAMES = [
   { phase: 'Phase 1', icon: '🃏', title: 'Flashcard Battle', slug: 'flashcard-battle', tone: colors.purpleSoft, description: 'Flip flashcards, recall the answer and build your score.', meta: 'Recall • 5 cards' },
   { phase: 'Phase 2', icon: '🧠', title: 'Match & Learn', slug: 'match-learn', tone: colors.greenSoft, description: 'Match learning concepts with the correct definitions or answers.', meta: 'Memory • 5 matches' },
   { phase: 'Phase 2', icon: '🔤', title: 'Word Scramble', slug: 'word-scramble', tone: colors.pinkSoft, description: 'Unscramble important learning terms before time runs out.', meta: 'Vocabulary • 5 words' },
-  { phase: 'Phase 3', icon: '🐉', title: 'Boss Battle', slug: 'boss-battle', tone: '#F1ECFF', description: 'Face a final mixed challenge and earn a larger XP reward.', meta: 'Boss • 10 questions' },
+  { phase: 'Phase 3', icon: '🐉', title: 'Boss Battle', slug: 'boss-battle', tone: '#F0EEFF', description: 'Face a final mixed challenge and earn a larger XP reward.', meta: 'Boss • 10 questions' },
 ];
 const phaseColors = { 'Phase 1': colors.primary, 'Phase 2': colors.purple, 'Phase 3': colors.navy };
 const ff = colors.fontFamily;
 
 function GameOption({ label, text, selected, correct, wrong, onPress, disabled }) {
-  return <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.2, borderColor: correct ? colors.success : wrong ? colors.danger : selected ? colors.primary : colors.border, backgroundColor: correct ? colors.greenSoft : wrong ? '#FFF1F4' : selected ? colors.blueSoft : '#fff', borderRadius: 13, padding: 13, marginBottom: 9, opacity: pressed ? .8 : 1 })}>
+  return <Pressable disabled={disabled} onPress={onPress} style={({ pressed }) => ({ flexDirection: 'row', alignItems: 'center', gap: 10, borderWidth: 1.2, borderColor: correct ? colors.success : wrong ? colors.danger : selected ? colors.primary : colors.border, backgroundColor: correct ? colors.greenSoft : wrong ? '#FFF0F6' : selected ? colors.blueSoft : '#fff', borderRadius: 13, padding: 13, marginBottom: 9, opacity: pressed ? .8 : 1 })}>
     <View style={{ width: 30, height: 30, borderRadius: 9, alignItems: 'center', justifyContent: 'center', backgroundColor: correct ? colors.success : wrong ? colors.danger : selected ? colors.primary : '#F7F7FB' }}><Text style={{ color: correct || wrong || selected ? '#fff' : colors.navy, fontWeight: '900' }}>{label}</Text></View>
     <Text style={{ flex: 1, fontFamily: colors.fontFamily, color: colors.navy, fontSize: 13, fontWeight: selected || correct ? '900' : '700', lineHeight: 20 }}>{text}</Text>
   </Pressable>;
@@ -177,15 +177,15 @@ export default function GamificationScreen() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={{ fontFamily: ff, color: '#fff', fontSize: 24, fontWeight: '900' }}>Your Learning Arcade</Text>
-              <Text style={{ fontFamily: ff, color: '#CBD5E1', fontSize: 11, marginTop: 5 }}>Play real learning games, earn XP, build streaks and unlock badges.</Text>
+              <Text style={{ fontFamily: ff, color: '#E9EAF3', fontSize: 11, marginTop: 5 }}>Play real learning games, earn XP, build streaks and unlock badges.</Text>
               <View style={{ marginTop: 17, flexDirection: 'row', justifyContent: 'space-between' }}>
                 <Text style={{ color: '#fff', fontFamily: ff, fontWeight: '900', fontSize: 11 }}>{xp} XP</Text>
-                <Text style={{ color: '#CBD5E1', fontFamily: ff, fontSize: 10 }}>{level * 500} XP</Text>
+                <Text style={{ color: '#E9EAF3', fontFamily: ff, fontSize: 10 }}>{level * 500} XP</Text>
               </View>
               <View style={{ height: 10, backgroundColor: '#30345D', borderRadius: 10, marginTop: 6, overflow: 'hidden' }}>
                 <View style={{ width: `${levelProgress}%`, height: 10, backgroundColor: colors.gold, borderRadius: 10 }} />
               </View>
-              <Text style={{ color: '#CBD5E1', fontFamily: ff, fontSize: 9, marginTop: 6, textAlign: 'center' }}>{Math.max(0, level * 500 - xp)} XP to reach level {level + 1}</Text>
+              <Text style={{ color: '#E9EAF3', fontFamily: ff, fontSize: 9, marginTop: 6, textAlign: 'center' }}>{Math.max(0, level * 500 - xp)} XP to reach level {level + 1}</Text>
             </View>
             <View style={{ width: 78, height: 88, borderRadius: 20, backgroundColor: '#30226D', borderWidth: 1, borderColor: '#6C55D9', alignItems: 'center', justifyContent: 'center' }}>
               <Text style={{ color: '#C8BEFF', fontFamily: ff, fontSize: 9, fontWeight: '900' }}>LEVEL</Text>
@@ -234,7 +234,7 @@ export default function GamificationScreen() {
 
         <Card style={{ marginTop: 13 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}><Text style={{ fontFamily: ff, color: colors.navy, fontSize: 14, fontWeight: '900' }}>Leaderboard</Text><Badge tone="blue">This Week</Badge></View>
-          {(leaderboard.length ? leaderboard : [{rank:1,name:'Keep learning',xp:highScore||0},{rank:2,name:'You',xp}]).slice(0,5).map((u,i)=><View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#F1F2F7' }}>
+          {(leaderboard.length ? leaderboard : [{rank:1,name:'Keep learning',xp:highScore||0},{rank:2,name:'You',xp}]).slice(0,5).map((u,i)=><View key={i} style={{ flexDirection: 'row', alignItems: 'center', gap: 7, paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#F7F7FB' }}>
             <Text style={{ width: 19, fontFamily: ff, color: i < 3 ? colors.warning : colors.muted, fontWeight: '900', fontSize: 10 }}>{u.rank || i + 1}</Text>
             <View style={{ width: 27, height: 27, borderRadius: 14, backgroundColor: i === 0 ? colors.orangeSoft : colors.purpleSoft, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 12 }}>{i === 0 ? '🏅' : 'ST'}</Text></View>
             <Text style={{ flex: 1, fontFamily: ff, color: colors.navy, fontWeight: '800', fontSize: 9 }}>{u.name || u.username || 'Student'}</Text>
@@ -245,10 +245,10 @@ export default function GamificationScreen() {
 
         <Card style={{ marginTop: 13 }}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}><Text style={{ fontFamily: ff, color: colors.navy, fontSize: 14, fontWeight: '900' }}>Recent Achievements</Text><Text style={{ color: colors.primary, fontSize: 9, fontWeight: '900' }}>View all</Text></View>
-          {achievements.slice(0,4).map((a,i)=><View key={i} style={{ flexDirection: 'row', gap: 9, alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#F1F2F7' }}><View style={{ width: 32, height: 32, borderRadius: 11, backgroundColor: i % 2 ? colors.orangeSoft : colors.greenSoft, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 16 }}>{a.icon}</Text></View><View style={{ flex: 1 }}><Text style={{ fontFamily: ff, color: colors.navy, fontSize: 9, fontWeight: '900' }}>{a.title}</Text><Text style={{ fontFamily: ff, color: colors.muted, fontSize: 8, marginTop: 2 }}>{a.subtitle}</Text></View></View>)}
+          {achievements.slice(0,4).map((a,i)=><View key={i} style={{ flexDirection: 'row', gap: 9, alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: '#F7F7FB' }}><View style={{ width: 32, height: 32, borderRadius: 11, backgroundColor: i % 2 ? colors.orangeSoft : colors.greenSoft, alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 16 }}>{a.icon}</Text></View><View style={{ flex: 1 }}><Text style={{ fontFamily: ff, color: colors.navy, fontSize: 9, fontWeight: '900' }}>{a.title}</Text><Text style={{ fontFamily: ff, color: colors.muted, fontSize: 8, marginTop: 2 }}>{a.subtitle}</Text></View></View>)}
         </Card>
 
-        <Card style={{ marginTop: 13, backgroundColor: '#F1ECFF', borderColor: '#E1D9FF' }}>
+        <Card style={{ marginTop: 13, backgroundColor: '#F0EEFF', borderColor: '#DDD9FF' }}>
           <Text style={{ fontFamily: ff, color: colors.navy, fontWeight: '900', fontSize: 12 }}>🏆 Play games, earn XP</Text>
           <Text style={{ fontFamily: ff, color: colors.muted, fontSize: 9, lineHeight: 15, marginTop: 5 }}>Complete phases, build streaks and become a top learner.</Text>
         </Card>

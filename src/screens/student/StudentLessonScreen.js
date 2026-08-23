@@ -68,11 +68,11 @@ function PdfContent({ content, contentBlocks }) {
   return <View style={{ marginTop: 6 }}>
     {blocks.map((block,index)=>{
       const type=block?.type;
-      if(type==='subheading'||type==='heading') return <Text key={index} style={{fontSize:20,lineHeight:28,fontWeight:'800',color:'#29417E',marginTop:index?20:6,marginBottom:8}}>{block.text}</Text>;
-      if(type==='bullets'||type==='numbered') return <View key={index} style={{marginBottom:10}}>{(block.items||[]).map((item,i)=><View key={i} style={{flexDirection:'row',alignItems:'flex-start',marginBottom:7,paddingLeft:4}}><Text style={{fontSize:16,lineHeight:25,marginRight:10,color:'#111827',fontWeight:type==='numbered'?'700':'400'}}>{type==='numbered'?`${i+1}.`:'•'}</Text><Text selectable style={{flex:1,fontSize:16,lineHeight:25,color:'#111827'}}>{item}</Text></View>)}</View>;
-      if(type==='code') return <View key={index} style={{backgroundColor:'#101828',borderRadius:7,padding:14,marginTop:8,marginBottom:12}}><Text selectable style={{color:'#F8FAFC',fontFamily:Platform.OS==='ios'?'Menlo':'monospace',fontSize:13,lineHeight:21}}>{block.text}</Text></View>;
-      if(type==='callout') return <View key={index} style={{backgroundColor:'#F5F8FF',borderWidth:1,borderColor:'#D7E0F8',borderRadius:7,padding:12,marginTop:7,marginBottom:7}}><Text style={{fontSize:15.5,lineHeight:24,color:'#111827'}}><Text style={{fontWeight:'900'}}>{block.label ? `${block.label}: ` : ''}</Text>{block.text}</Text></View>;
-      return <Text key={index} selectable style={{fontSize:16,lineHeight:27,color:'#111827',marginBottom:10}}>{block.text||''}</Text>;
+      if(type==='subheading'||type==='heading') return <Text key={index} style={{fontSize:20,lineHeight:28,fontWeight:'800',color:'#1B2145',marginTop:index?20:6,marginBottom:8}}>{block.text}</Text>;
+      if(type==='bullets'||type==='numbered') return <View key={index} style={{marginBottom:10}}>{(block.items||[]).map((item,i)=><View key={i} style={{flexDirection:'row',alignItems:'flex-start',marginBottom:7,paddingLeft:4}}><Text style={{fontSize:16,lineHeight:25,marginRight:10,color:'#1B2145',fontWeight:type==='numbered'?'700':'400'}}>{type==='numbered'?`${i+1}.`:'•'}</Text><Text selectable style={{flex:1,fontSize:16,lineHeight:25,color:'#1B2145'}}>{item}</Text></View>)}</View>;
+      if(type==='code') return <View key={index} style={{backgroundColor:'#101828',borderRadius:7,padding:14,marginTop:8,marginBottom:12}}><Text selectable style={{color:'#F8F9FD',fontFamily:Platform.OS==='ios'?'Menlo':'monospace',fontSize:13,lineHeight:21}}>{block.text}</Text></View>;
+      if(type==='callout') return <View key={index} style={{backgroundColor:'#F5F8FF',borderWidth:1,borderColor:'#D7E0F8',borderRadius:7,padding:12,marginTop:7,marginBottom:7}}><Text style={{fontSize:15.5,lineHeight:24,color:'#1B2145'}}><Text style={{fontWeight:'900'}}>{block.label ? `${block.label}: ` : ''}</Text>{block.text}</Text></View>;
+      return <Text key={index} selectable style={{fontSize:16,lineHeight:27,color:'#1B2145',marginBottom:10}}>{block.text||''}</Text>;
     })}
   </View>;
 }
@@ -304,7 +304,7 @@ export default function StudentLessonScreen({
           backgroundColor: '#FFFFFF',
           borderRadius: 8,
           borderWidth: 1,
-          borderColor: '#E5E7EB',
+          borderColor: '#E9EAF3',
           paddingHorizontal: Platform.OS === 'web' ? 52 : 22,
           paddingVertical: Platform.OS === 'web' ? 42 : 24,
           shadowColor: '#000',
@@ -313,7 +313,7 @@ export default function StudentLessonScreen({
           elevation: 2,
         }}
       >
-        <View style={{ borderBottomWidth: 1, borderBottomColor: '#E5E7EB', paddingBottom: 18 }}>
+        <View style={{ borderBottomWidth: 1, borderBottomColor: '#E9EAF3', paddingBottom: 18 }}>
           <Text
             style={{
               fontSize: 12,
@@ -330,7 +330,7 @@ export default function StudentLessonScreen({
               fontSize: Platform.OS === 'web' ? 30 : 27,
               lineHeight: 38,
               fontWeight: '900',
-              color: '#29417E',
+              color: '#1B2145',
               marginTop: 8,
             }}
           >
@@ -466,7 +466,7 @@ export default function StudentLessonScreen({
           {savedNote && (
             <View
               style={{
-                backgroundColor: '#F8FAFC',
+                backgroundColor: '#F8F9FD',
                 borderRadius: 12,
                 padding: 13,
                 marginBottom: 12,

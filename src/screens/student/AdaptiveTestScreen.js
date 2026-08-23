@@ -118,7 +118,7 @@ export default function AdaptiveTestScreen() {
         <View style={{ maxWidth: 980 }}>
           <Card style={{ backgroundColor: colors.hero, borderColor: colors.hero }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-              <View style={{ flex: 1 }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 22, fontWeight: '900', color: '#fff' }}>Mock Test</Text><Text style={{ fontFamily: colors.fontFamily, color: '#C8CAE5', marginTop: 4 }}>{test.adaptive_level} level · {questions.length} questions</Text></View>
+              <View style={{ flex: 1 }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 22, fontWeight: '900', color: '#fff' }}>Mock Test</Text><Text style={{ fontFamily: colors.fontFamily, color: '#D6D8E2', marginTop: 4 }}>{test.adaptive_level} level · {questions.length} questions</Text></View>
               <Badge tone="purple">{answered}/{questions.length}</Badge>
             </View>
             <View style={{ marginTop: 14 }}><ProgressBar value={percentage} color="#8B7CFF" /><Text style={{ fontFamily: colors.fontFamily, color: '#D6D8F2', fontSize: 10, marginTop: 5 }}>{answered} answered · {questions.length - answered} remaining</Text></View>

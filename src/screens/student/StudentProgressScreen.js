@@ -24,7 +24,7 @@ function Stat({ icon, label, value, tone = colors.purpleSoft, accent = colors.pr
 
 function Day({ day, date, status, tasks, today }) {
   return (
-    <View style={{ flex: 1, minWidth: 72, borderWidth: 1, borderColor: today ? '#D9D4FF' : colors.border, backgroundColor: today ? '#F4F1FF' : '#fff', borderRadius: 13, paddingVertical: 11, alignItems: 'center' }}>
+    <View style={{ flex: 1, minWidth: 72, borderWidth: 1, borderColor: today ? '#D6D0FF' : colors.border, backgroundColor: today ? '#F4F1FF' : '#fff', borderRadius: 13, paddingVertical: 11, alignItems: 'center' }}>
       <Text style={{ fontFamily: ff, fontSize: 10, color: colors.muted, fontWeight: '800' }}>{day}</Text>
       <Text style={{ fontFamily: ff, fontSize: 17, color: colors.navy, fontWeight: '900', marginTop: 5 }}>{date}</Text>
       <View style={{ width: 20, height: 20, borderRadius: 10, marginTop: 7, alignItems: 'center', justifyContent: 'center', backgroundColor: status === 'done' ? colors.greenSoft : status === 'today' ? colors.purpleSoft : '#fff', borderWidth: status === 'todo' ? 1 : 0, borderColor: colors.border }}>
@@ -151,7 +151,7 @@ export default function StudentProgressScreen({ openCourse, openQuiz, openRoute 
             <Text style={{ color: '#fff', fontFamily: ff, fontSize: 18, fontWeight: '900' }}>🎯 Today's Goal</Text>
             <Text style={{ color: '#fff', fontFamily: ff, fontSize: 16, fontWeight: '900', marginTop: 16 }}>{dailyGoal} minutes of focused learning</Text>
             <View style={{ marginTop: 13, height: 9, borderRadius: 8, backgroundColor: '#34385F', overflow: 'hidden' }}><View style={{ width: `${goalPct}%`, height: 9, backgroundColor: colors.purple, borderRadius: 8 }} /></View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}><Text style={{ color: '#CBD5E1', fontFamily: ff, fontSize: 10 }}>{completedMinutes} min completed</Text><Text style={{ color: '#fff', fontFamily: ff, fontSize: 10, fontWeight: '900' }}>{goalPct}%</Text></View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}><Text style={{ color: '#E9EAF3', fontFamily: ff, fontSize: 10 }}>{completedMinutes} min completed</Text><Text style={{ color: '#fff', fontFamily: ff, fontSize: 10, fontWeight: '900' }}>{goalPct}%</Text></View>
             <Button title="◉ Continue Learning" onPress={() => firstCourseId && openCourse && openCourse(firstCourseId)} style={{ marginTop: 14, alignSelf: 'flex-start' }} />
           </View>
           <Text style={{ position: 'absolute', right: 24, bottom: 22, fontSize: 62 }}>🎯</Text>
@@ -160,8 +160,8 @@ export default function StudentProgressScreen({ openCourse, openQuiz, openRoute 
         <Card style={{ flex: 0.8, minHeight: 190 }}>
           <Text style={{ fontFamily: ff, color: colors.navy, fontWeight: '900', fontSize: 15 }}>📈 Overall Progress</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 15, gap: 18 }}>
-            <View style={{ width: 105, height: 105, borderRadius: 53, borderWidth: 11, borderColor: '#ECE9FF', alignItems: 'center', justifyContent: 'center' }}>
-              <View style={{ position: 'absolute', width: 105, height: 105, borderRadius: 53, borderWidth: 11, borderColor: colors.primary, borderRightColor: '#ECE9FF', borderBottomColor: '#ECE9FF', transform: [{ rotate: `${Math.min(180, overall * 1.8)}deg` }] }} />
+            <View style={{ width: 105, height: 105, borderRadius: 53, borderWidth: 11, borderColor: '#F0EEFF', alignItems: 'center', justifyContent: 'center' }}>
+              <View style={{ position: 'absolute', width: 105, height: 105, borderRadius: 53, borderWidth: 11, borderColor: colors.primary, borderRightColor: '#F0EEFF', borderBottomColor: '#F0EEFF', transform: [{ rotate: `${Math.min(180, overall * 1.8)}deg` }] }} />
               <Text style={{ fontFamily: ff, color: colors.navy, fontSize: 20, fontWeight: '900' }}>{overall}%</Text>
             </View>
             <View style={{ flex: 1, gap: 7 }}>
@@ -229,12 +229,12 @@ export default function StudentProgressScreen({ openCourse, openQuiz, openRoute 
         </Card>
         <Card style={{ flex: 0.8 }}>
           <View style={{ flexDirection:'row', justifyContent:'space-between' }}><Text style={{ fontFamily:ff, color:colors.navy, fontSize:16, fontWeight:'900' }}>📊 Study Insights</Text><Badge tone="blue">This week</Badge></View>
-          {[['◷','Total Study Time',`${plan?.study_hours || '0h 0m'}`],['▤','Lessons Completed',completedLessons],['🔗','Quizzes Taken',quizCount],['✓','Accuracy',`${plan?.accuracy || 0}%`]].map(([i,l,v])=><View key={l} style={{flexDirection:'row',alignItems:'center',paddingVertical:11,borderBottomWidth:1,borderBottomColor:'#F1F2F7'}}><Text style={{width:28,fontSize:14}}>{i}</Text><Text style={{flex:1,fontFamily:ff,color:colors.muted,fontSize:10}}>{l}</Text><Text style={{fontFamily:ff,color:colors.navy,fontWeight:'900',fontSize:10}}>{v}</Text></View>)}
+          {[['◷','Total Study Time',`${plan?.study_hours || '0h 0m'}`],['▤','Lessons Completed',completedLessons],['🔗','Quizzes Taken',quizCount],['✓','Accuracy',`${plan?.accuracy || 0}%`]].map(([i,l,v])=><View key={l} style={{flexDirection:'row',alignItems:'center',paddingVertical:11,borderBottomWidth:1,borderBottomColor:'#F7F7FB'}}><Text style={{width:28,fontSize:14}}>{i}</Text><Text style={{flex:1,fontFamily:ff,color:colors.muted,fontSize:10}}>{l}</Text><Text style={{fontFamily:ff,color:colors.navy,fontWeight:'900',fontSize:10}}>{v}</Text></View>)}
           <Text style={{ fontFamily:ff, color:colors.muted,fontSize:9,marginTop:9 }}>Keep learning consistently to reach your goals. 🚀</Text>
         </Card>
       </View>
 
-      <Card style={{ marginTop: 14, backgroundColor: '#F1ECFF', borderColor: '#E1D9FF', flexDirection: 'row', alignItems: 'center', gap: 13 }}>
+      <Card style={{ marginTop: 14, backgroundColor: '#F0EEFF', borderColor: '#DDD9FF', flexDirection: 'row', alignItems: 'center', gap: 13 }}>
         <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 28 }}>🤖</Text></View>
         <View style={{ flex: 1 }}><Text style={{ fontFamily: ff, color: colors.navy, fontSize: 15, fontWeight: '900' }}>Need help with your plan?</Text><Text style={{ fontFamily: ff, color: colors.muted, fontSize: 10, marginTop: 3 }}>Your AI Tutor can personalize your plan further and suggest the best resources.</Text></View>
         <Button title="Ask AI Tutor" onPress={() => openRoute && openRoute('ai')} />
