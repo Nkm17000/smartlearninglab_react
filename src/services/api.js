@@ -182,8 +182,18 @@ const listOf=x=>Array.isArray(x)?x:(x?.items||x?.data||[]);
 export const api={
  BASE_URL,idOf,listOf,
  login:async(email,password)=>{const d=await request('/auth/login',{method:'POST',body:JSON.stringify({email,password})});await AsyncStorage.setItem(TOKEN_KEY,d.access_token);await AsyncStorage.setItem(USER_KEY,JSON.stringify(d.user));return d},
+ // Store an OAuth-issued access token returned by the backend callback.
+ setStoredAuth:async(token,user=null)=>{
+   if(!token) throw new Error('OAuth login did not return an access token.');
+   await AsyncStorage.setItem(TOKEN_KEY,token);
+   if(user) await AsyncStorage.setItem(USER_KEY,JSON.stringify(user));
+   return token;
+ },
+ getStoredToken:async()=>AsyncStorage.getItem(TOKEN_KEY),
+ profile:async()=>request('/profile',{notifySuccess:false,notifyError:false}),
  register:p=>request('/auth/register',{method:'POST',body:JSON.stringify(p)}),
  registerResend:email=>request('/auth/register/resend',{method:'POST',body:JSON.stringify({email})}),
+ resendRegistration:email=>request('/auth/register/resend',{method:'POST',body:JSON.stringify({email})}),
  forgotPassword:email=>request('/auth/forgot-password',{method:'POST',body:JSON.stringify({email})}),
  resetPassword:(token,password)=>request('/auth/reset-password',{method:'POST',body:JSON.stringify({token,password})}),
  logout:async()=>{await AsyncStorage.multiRemove([TOKEN_KEY,USER_KEY]);notifyApp('success','Logged out successfully.');},

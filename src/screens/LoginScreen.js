@@ -20,8 +20,39 @@ export default function LoginScreen({onLoggedIn}){
  useEffect(()=>{
    if(Platform.OS==='web'&&typeof window!=='undefined'){
      const params=new URLSearchParams(window.location.search);
+     const oauthToken=params.get('oauth_token');
+     const oauthError=params.get('oauth_error');
      const token=params.get('reset_token');
      const verified=params.get('verified');
+
+     // OAuth callback returns to the frontend with ?oauth_token=... .
+     // Persist the token, fetch the authenticated user, then enter the app.
+     if(oauthToken){
+       (async()=>{
+         try{
+           setBusy(true);
+           await api.setStoredAuth(oauthToken);
+           const user=await api.profile();
+           await api.setStoredAuth(oauthToken,user);
+           notifyApp('success','Google/GitHub sign-in successful.',5000);
+           window.history.replaceState({},document.title,window.location.pathname);
+           onLoggedIn(user);
+         }catch(e){
+           await api.logout();
+           notifyApp('error',e?.message||'Social sign-in completed but the user session could not be created.',7000);
+           window.history.replaceState({},document.title,window.location.pathname);
+         }finally{
+           setBusy(false);
+         }
+       })();
+       return;
+     }
+
+     if(oauthError){
+       notifyApp('error',decodeURIComponent(oauthError),7000);
+       window.history.replaceState({},document.title,window.location.pathname);
+     }
+
      if(token){setResetToken(token);setMode('reset');}
      if(verified==='success'){
        setVerifiedState('success');
