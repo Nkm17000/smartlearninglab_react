@@ -1,14 +1,17 @@
 import React from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { colors } from '../theme';
 
 const ff = colors.fontFamily;
 
 export function AppShell({ children, refreshing = false }) {
+  const { width } = useWindowDimensions();
+  const mobile = width < 720;
+
   return (
     <ScrollView
       style={s.root}
-      contentContainerStyle={s.content}
+      contentContainerStyle={[s.content, mobile && s.contentMobile]}
       keyboardShouldPersistTaps="handled"
       showsVerticalScrollIndicator={false}
     >
@@ -19,8 +22,11 @@ export function AppShell({ children, refreshing = false }) {
 }
 
 export function Header({ title, subtitle, right, eyebrow }) {
-  return <View style={s.header}>
-    <View style={{flex:1,minWidth:220}}>
+  const { width } = useWindowDimensions();
+  const mobile = width < 720;
+
+  return <View style={[s.header, mobile && s.headerMobile]}>
+    <View style={{flex:1,minWidth:0}}>
       {eyebrow && <Text style={s.eyebrow}>{eyebrow}</Text>}
       <Text style={s.h1}>{title}</Text>
       {subtitle && <Text style={s.sub}>{subtitle}</Text>}

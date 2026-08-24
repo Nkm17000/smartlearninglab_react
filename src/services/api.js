@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { notifyApp } from './notifications';
+import { notifyApp, emitSessionExpired } from './notifications';
 
 /*
  * ============================================================
@@ -44,6 +44,33 @@ function ensureBaseUrl() {
 const TOKEN_KEY = 'sll_token';
 const USER_KEY = 'sll_user';
 const OFFLINE_QUEUE_KEY = 'sll_offline_queue';
+
+// Student portal actions are intentionally quiet: no API success/failure toast.
+// Admin pages keep the existing API feedback behavior.
+let portalRole = 'unknown';
+
+export function setPortalRole(role) {
+  portalRole = String(role || 'unknown').toLowerCase();
+}
+
+function isStudentPortal() {
+  return portalRole === 'student';
+}
+
+let sessionExpiryHandled = false;
+
+async function handleSessionExpired() {
+  if (sessionExpiryHandled) return;
+  sessionExpiryHandled = true;
+
+  try {
+    await clearStoredAuth();
+  } finally {
+    GET_CACHE.clear();
+    GET_INFLIGHT.clear();
+    emitSessionExpired();
+  }
+}
 
 /*
  * ============================================================
@@ -408,9 +435,10 @@ async function request(path, options = {}) {
   const isGet = method === 'GET';
 
   const notifySuccess =
-    options.notifySuccess !== false && !isGet;
+    options.notifySuccess !== false && !isGet && !isStudentPortal();
 
-  const notifyError = options.notifyError !== false;
+  const notifyError =
+    options.notifyError !== false && !isStudentPortal();
 
   const cleanOptions = { ...options };
 
@@ -495,6 +523,19 @@ async function request(path, options = {}) {
       data = raw;
     }
 
+    if (response.status === 401) {
+      await handleSessionExpired();
+
+      if (!isStudentPortal()) {
+        notifyApp('error', 'Your session has expired. Please login again.', 5000);
+      }
+
+      const error = new Error('SESSION_EXPIRED');
+      error.code = 'SESSION_EXPIRED';
+      error.status = 401;
+      throw error;
+    }
+
     if (!response.ok) {
       const m = errorMessage(
         data,
@@ -505,7 +546,10 @@ async function request(path, options = {}) {
         notifyApp('error', m, 5000);
       }
 
-      throw new Error(m);
+      const error = new Error(m);
+      error.status = response.status;
+      error.isApiError = true;
+      throw error;
     }
 
     if (isGet) {
@@ -678,31 +722,47 @@ async function upload(
       data = raw;
     }
 
+    if (response.status === 401) {
+      await handleSessionExpired();
+
+      if (!isStudentPortal()) {
+        notifyApp('error', 'Your session has expired. Please login again.', 5000);
+      }
+
+      const error = new Error('SESSION_EXPIRED');
+      error.code = 'SESSION_EXPIRED';
+      error.status = 401;
+      throw error;
+    }
+
     if (!response.ok) {
       const m = errorMessage(
         data,
         response.status
       );
 
-      notifyApp(
-        'error',
-        m,
-        5000
-      );
+      if (!isStudentPortal()) {
+        notifyApp('error', m, 5000);
+      }
 
-      throw new Error(m);
+      const error = new Error(m);
+      error.status = response.status;
+      error.isApiError = true;
+      throw error;
     }
 
     invalidateGetCache();
 
-    notifyApp(
-      'success',
-      humanizeApiMessage(
-        path,
-        'POST',
-        data
-      )
-    );
+    if (!isStudentPortal()) {
+      notifyApp(
+        'success',
+        humanizeApiMessage(
+          path,
+          'POST',
+          data
+        )
+      );
+    }
 
     return data;
   } catch (e) {
@@ -765,7 +825,10 @@ export async function setStoredAuth(
     token
   );
 
+  sessionExpiryHandled = false;
+
   if (user) {
+    setPortalRole(user.role || 'student');
     await AsyncStorage.setItem(
       USER_KEY,
       JSON.stringify(user)
@@ -818,12 +881,16 @@ export const api = {
       JSON.stringify(d.user)
     );
 
+    sessionExpiryHandled = false;
+    setPortalRole(d.user?.role || 'student');
+
     return d;
   },
 
   setStoredAuth,
 
   clearStoredAuth,
+  setPortalRole,
 
   getStoredToken: async () =>
     AsyncStorage.getItem(
@@ -891,15 +958,9 @@ export const api = {
     ),
 
   logout: async () => {
-    await AsyncStorage.multiRemove([
-      TOKEN_KEY,
-      USER_KEY,
-    ]);
-
-    notifyApp(
-      'success',
-      'Logged out successfully.'
-    );
+    await clearStoredAuth();
+    sessionExpiryHandled = false;
+    setPortalRole('unknown');
   },
 
   getStoredUser: async () => {

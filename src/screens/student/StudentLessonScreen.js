@@ -140,12 +140,9 @@ export default function StudentLessonScreen({
       }
 
       await load();
-      Alert.alert(
-        'Course completed',
-        'Congratulations! You completed the final lesson.'
-      );
+      
     } catch (e) {
-      Alert.alert('Lesson', e?.message || 'Unable to mark the lesson complete.');
+      console.warn('[Student API] Lesson completion:', e?.message || e);
     } finally {
       setBusy(false);
     }
@@ -176,9 +173,9 @@ export default function StudentLessonScreen({
       }
 
       setNote(text);
-      Alert.alert('Saved', 'Your note was saved for this lesson.');
+      
     } catch (e) {
-      Alert.alert('Note', e?.message || 'Unable to save your note.');
+      console.warn('[Student API] Lesson note:', e?.message || e);
     }
   };
 

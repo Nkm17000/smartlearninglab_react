@@ -188,7 +188,7 @@ export default function StudentCourseScreen({ courseId, onBack, openQuiz, openLe
       setProgress(refreshed.progress || null);
       setCompleted(Array.isArray(refreshed.completed_lesson_ids) ? refreshed.completed_lesson_ids.map(String) : []);
     } catch (e) {
-      Alert.alert('Progress', e.message);
+      console.warn('[Student API] Progress:', e?.message || e);
     }
   };
 
@@ -208,16 +208,15 @@ export default function StudentCourseScreen({ courseId, onBack, openQuiz, openLe
       await api.addBookmark({ item_type: 'course', item_id: courseId, title: course.name || course.title });
       setBookmarked(true);
     } catch (e) {
-      Alert.alert('Bookmark', e.message);
+      console.warn('[Student API] Bookmark:', e?.message || e);
     }
   };
 
   const certificate = async () => {
     try {
-      const result = await api.issueCertificate(courseId);
-      Alert.alert('Certificate ready', result.certificate_id);
+      await api.issueCertificate(courseId);
     } catch (e) {
-      Alert.alert('Certificate', e.message);
+      console.warn('[Student API] Certificate:', e?.message || e);
     }
   };
 

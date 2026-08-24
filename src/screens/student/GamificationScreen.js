@@ -57,7 +57,7 @@ export default function GamificationScreen() {
       const s = await api.gamificationStart(game.slug);
       setSession(s);
     } catch (e) {
-      Alert.alert(game.title, e?.message || 'Unable to start this game.');
+      console.warn('[Student API] Start game:', e?.message || e);
       setSelectedGame(null);
     } finally { setBusy(false); }
   };
@@ -75,7 +75,7 @@ export default function GamificationScreen() {
       if (r.finished) {
         await load();
       }
-    } catch (e) { Alert.alert('Game', e?.message || 'Unable to submit answer.'); }
+    } catch (e) { console.warn('[Student API] Game answer:', e?.message || e); }
     finally { setBusy(false); }
   };
 
@@ -90,7 +90,7 @@ export default function GamificationScreen() {
     if (!session) return;
     setBusy(true);
     try { const r = await api.gamificationFinish(session.session_id); setResult(r); setSubmitted(true); await load(); }
-    catch (e) { Alert.alert('Game', e?.message || 'Unable to finish game.'); }
+    catch (e) { console.warn('[Student API] Finish game:', e?.message || e); }
     finally { setBusy(false); }
   };
 

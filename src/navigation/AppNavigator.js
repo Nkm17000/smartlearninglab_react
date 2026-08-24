@@ -39,7 +39,8 @@ import CommunityScreen from '../screens/student/CommunityScreen';
 import StudentLibraryScreen from '../screens/student/StudentLibraryScreen';
 
 import ErrorBoundary from '../components/ErrorBoundary';
-import { api } from '../services/api';
+import { api, setPortalRole } from '../services/api';
+import { subscribeSessionExpired } from '../services/notifications';
 import { colors } from '../theme';
 import HybridNavigation from './HybridNavigation';
 
@@ -56,7 +57,46 @@ export default function AppNavigator() {
   const [route, setRoute] = useState('home');
 
   useEffect(() => {
-    api.getStoredUser().then(setUser).catch(() => setUser(null));
+    let mounted = true;
+
+    const unsubscribe = subscribeSessionExpired(() => {
+      if (!mounted) return;
+      setPortalRole('unknown');
+      setUser(null);
+      setRoute('home');
+    });
+
+    (async () => {
+      try {
+        const storedUser = await api.getStoredUser();
+        if (!mounted) return;
+
+        if (!storedUser) {
+          setPortalRole('unknown');
+          setUser(null);
+          return;
+        }
+
+        setPortalRole(storedUser.role || 'student');
+
+        // Validate the persisted JWT at startup. A 401 is handled centrally.
+        try {
+          const serverUser = await api.profile();
+          if (mounted) setUser(serverUser || storedUser);
+        } catch (error) {
+          if (error?.code === 'SESSION_EXPIRED') return;
+          // Keep the cached user if the backend is temporarily unreachable.
+          if (mounted) setUser(storedUser);
+        }
+      } catch (_) {
+        if (mounted) setUser(null);
+      }
+    })();
+
+    return () => {
+      mounted = false;
+      unsubscribe();
+    };
   }, []);
 
   if (user === undefined) {
@@ -72,6 +112,7 @@ export default function AppNavigator() {
       <ErrorBoundary>
         <LoginScreen
           onLoggedIn={(loggedInUser) => {
+            setPortalRole(loggedInUser?.role || 'student');
             setUser(loggedInUser);
             setRoute('home');
           }}
@@ -87,6 +128,7 @@ export default function AppNavigator() {
     try {
       await api.logout();
     } finally {
+      setPortalRole('unknown');
       setUser(null);
       setRoute('home');
     }

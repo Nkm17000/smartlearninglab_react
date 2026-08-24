@@ -48,7 +48,6 @@ export default function AdaptiveTestScreen() {
       setTest(next); setAnswers({}); setCurrent(0); setResult(null);
     } catch (e) {
       setError(e?.message || 'Unable to start mock test.');
-      Alert.alert('Mock Test', e?.message || 'Unable to start mock test.');
     } finally { setBusy(false); }
   };
 
@@ -63,7 +62,7 @@ export default function AdaptiveTestScreen() {
       const r = await api.adaptiveSubmit({ test_id: test.test_id, answers });
       setResult(r);
     } catch (e) {
-      Alert.alert('Submit Mock Test', e?.message || 'Unable to submit the mock test.');
+      console.warn('[Student API] Submit Mock Test:', e?.message || e);
     } finally { setBusy(false); }
   };
 
