@@ -14,6 +14,7 @@ import AdminStaffScreen from '../screens/admin/AdminStaffScreen';
 import AdminAILabScreen from '../screens/admin/AdminAILabScreen';
 import AdminLibraryScreen from '../screens/admin/AdminLibraryScreen';
 import AdminBulkContentScreen from '../screens/admin/AdminBulkContentScreen';
+import AdminTaxonomyScreen from '../screens/admin/AdminTaxonomyScreen';
 
 import StudentNotesScreen from '../screens/student/StudentNotesScreen';
 import AIChatScreen from '../screens/student/AIChatScreen';
@@ -155,6 +156,8 @@ export default function AppNavigator() {
       page = <AdminStudentsScreen />;
     } else if (route === 'ai-lab') {
       page = <AdminAILabScreen />;
+    } else if (route === 'taxonomy') {
+      page = <AdminTaxonomyScreen />;
     } else if (route === 'analytics') {
       page = <AdminAnalyticsScreen />;
     } else if (route === 'staff' && isRoot) {

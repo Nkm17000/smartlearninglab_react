@@ -1021,6 +1021,30 @@ export const api = {
   quizCategories: () =>
     request('/admin/quiz-categories'),
 
+  adminTaxonomy: () =>
+    request('/admin/taxonomy'),
+
+  adminCategories: () =>
+    request('/admin/categories'),
+
+  createAdminCategory: body =>
+    request('/admin/categories', { method: 'POST', body: JSON.stringify(body) }),
+
+  updateAdminCategory: (id, body) =>
+    request(`/admin/categories/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  deleteAdminCategory: id =>
+    request(`/admin/categories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  createAdminSubcategory: (categoryId, body) =>
+    request(`/admin/categories/${encodeURIComponent(categoryId)}/subcategories`, { method: 'POST', body: JSON.stringify(body) }),
+
+  updateAdminSubcategory: (id, body) =>
+    request(`/admin/subcategories/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }),
+
+  deleteAdminSubcategory: id =>
+    request(`/admin/subcategories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
   courseResources: id =>
     request(
       `/admin/courses/${id}/resources`

@@ -14,7 +14,7 @@ export default function HybridNavigation({route,setRoute,logout,admin=false,root
     : [['home','⌂','Home'],['courses','▣','Courses'],['quizzes','✓','Quizzes'],['progress','◉','My Learning'],['study','✦','Study Assistance'],['flashcards','▤','Flashcards']];
 
   const side = admin
-    ? [['questions','Question Bank','Questions and content'],['analytics','Analytics','Platform performance'],...(root?[['staff','Admin & Staff','Manage administrators']]:[])]
+    ? [['questions','Question Bank','Questions and content'],['taxonomy','Taxonomy','Manage categories and subcategories'],['analytics','Analytics','Platform performance'],...(root?[['staff','Admin & Staff','Manage administrators']]:[])]
     : [['analytics','Analytics','Performance insights'],['bookmarks','Bookmarks','Saved items'],['leaderboard','Leaderboard','Compare & improve'],['certificates','Certificates','Your achievements'],['notes','Notes','Your personal notes'],['library','Study Library','PDFs & resources'],['community','Community','Learn with others'],['notifications','Notifications','Updates & alerts'],['gamification','Gamification','Learning games & XP'],['mock-test','Mock Test','Adaptive practice tests']];
 
   const active = route.startsWith('course:') ? 'courses' : route.startsWith('quiz:') ? 'quizzes' : route;
