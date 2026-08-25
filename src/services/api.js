@@ -1015,6 +1015,8 @@ export const api = {
   studySearch: (q, limit = 8) => request(`/study-assistance/search?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(limit)}`),
 
   // Backward-compatible content APIs used by bulk/admin screens.
+  // Admin bulk content APIs. Keep these as explicit facade methods so the
+  // web bundle and the source screen cannot drift into calling undefined APIs.
   bulkQuiz: (body) => request('/admin/bulk/quiz', { method: 'POST', body: JSON.stringify(body) }),
   bulkQuizFile: (file, fields = {}) => uploadFile('/admin/bulk/quiz-file', file, fields),
   bulkCoursePdf: (file, fields = {}) => uploadFile('/admin/bulk/course-pdf', file, fields),
