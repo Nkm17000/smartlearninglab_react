@@ -224,6 +224,12 @@ export default function AdminQuizzesScreen({ onCreateManual }) {
       />
 
       <Card style={{ backgroundColor: colors.navy, borderColor: colors.navy }}>
+        
+        <Button
+          title={publishingAll ? "Publishing..." : "Publish All"}
+          onPress={handlePublishAll}
+          disabled={publishingAll}
+        />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Text style={{ fontSize: 32 }}>📝</Text>
           <View style={{ flex: 1 }}>

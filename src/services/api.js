@@ -326,45 +326,7 @@ export const api = {
       method: 'POST',
     }),
 
-  publishAllQuizzes: () =>
-    request('/admin/quizzes/publish-all', {
-      method: 'POST',
-    }),
-
-  createManualQuiz: (body) =>
-    request('/admin/quizzes/manual', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-
-  unpublishQuiz: (id) =>
-    request(`/admin/quizzes/${id}/unpublish`, {
-      method: 'POST',
-    }),
-
-  addQuizQuestions: (id, ids) =>
-    request(`/admin/quizzes/${id}/questions`, {
-      method: 'POST',
-      body: JSON.stringify({ question_ids: ids }),
-    }),
-
-  removeQuizQuestion: (id, questionId) =>
-    request(`/admin/quizzes/${id}/questions/${questionId}`, {
-      method: 'DELETE',
-    }),
-
-  createQuizQuestion: (id, body) =>
-    request(`/admin/quizzes/${id}/questions/create`, {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
-
-  // Admin learning library and resources
-  adminLibrary: () => request('/admin/library'),
-  addLibraryLink: (body) => request('/admin/library', { method: 'POST', body: JSON.stringify(body) }),
-  deleteLibraryItem: (id) => request(`/admin/library/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  uploadLibraryFile: (file, meta = {}) => {
-    const form = new FormData();
+  publishAllQuizzes: () => request('/admin/quizzes/publish-all', { method: 'POST' });
     form.append('file', { uri: file.uri, name: file.name || 'upload', type: file.type || 'application/octet-stream' });
     Object.entries(meta).forEach(([k, v]) => {
       if (v !== undefined && v !== null) form.append(k, Array.isArray(v) ? v.join(',') : String(v));
