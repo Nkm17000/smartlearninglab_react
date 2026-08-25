@@ -1,87 +1,46 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { Alert, Pressable, ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { AppShell, Badge, Button, Card, Empty, ErrorState, Field, Loading, ProgressBar, SectionTitle } from '../../components/UI';
 import { api } from '../../services/api';
 import { colors } from '../../theme';
 
-const FALLBACK_CATEGORIES = ['SSC', 'Railway', 'Banking', 'UPSC', 'Computer', 'Teaching', 'Defence', 'State Exams'];
-const FALLBACK_SUBJECTS = ['English', 'Hindi', 'Math', 'Reasoning', 'General Awareness', 'Science', 'Physics', 'Chemistry', 'Biology', 'Computer', 'Java', 'Python', 'PHP', 'SQL', 'DBMS', 'Operating Systems', 'Networking', 'Spring Boot', 'Microservices', 'Aptitude'];
+const fallbackCategories = ['General', 'English Spoken', 'English Grammar', 'Banking', 'Railway', 'Teaching', 'Defence', 'SSC', 'UPSC', 'Computer'];
+const fallbackExams = ['General', 'SSC', 'Banking', 'Railway', 'Teaching', 'UPSC', 'Defence', 'State Exams', 'Computer'];
 
-const categoriesOf = course => Array.isArray(course?.categories) && course.categories.length
-  ? course.categories
-  : (course?.category ? [course.category] : ['General']);
-
-const subjectOf = course => course?.subject || 'General';
-
-function Stat({ icon, title, value, delta, tone = 'blue' }) {
-  const bg = tone === 'green' ? colors.greenSoft : tone === 'orange' ? colors.orangeSoft : tone === 'pink' ? colors.pinkSoft : colors.blueSoft;
-  return (
-    <Card style={{ flex: 1, minWidth: 150, marginBottom: 0, padding: 15 }}>
-      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 9 }}>
-        <View style={{ width: 38, height: 38, borderRadius: 12, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: 18 }}>{icon}</Text>
-        </View>
-        <Text style={{ fontSize: 11, fontWeight: '800', color: colors.muted, flex: 1 }}>{title}</Text>
-      </View>
-      <Text style={{ fontSize: 24, fontWeight: '900', color: colors.navy, marginTop: 10 }}>{value}</Text>
-      {delta && <Text style={{ fontSize: 10, fontWeight: '800', color: colors.success, marginTop: 4 }}>{delta}</Text>}
-    </Card>
-  );
-}
-
-function TaxonomyCard({ title, count, icon, active, onPress, tone = 'purple' }) {
-  const bg = tone === 'green' ? colors.greenSoft : tone === 'pink' ? colors.pinkSoft : tone === 'orange' ? colors.orangeSoft : colors.purpleSoft;
-  return (
-    <Pressable onPress={onPress} style={({ pressed }) => ({ width: 155, minWidth: 145, opacity: pressed ? 0.82 : 1 })}>
-      <Card style={{ marginBottom: 0, padding: 14, borderColor: active ? colors.primary : colors.border, backgroundColor: active ? colors.blueSoft : '#fff' }}>
-        <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: bg, alignItems: 'center', justifyContent: 'center' }}>
-          <Text style={{ fontSize: 22 }}>{icon}</Text>
-        </View>
-        <Text style={{ fontSize: 13, fontWeight: '900', color: colors.navy, marginTop: 10 }} numberOfLines={1}>{title}</Text>
-        <Text style={{ fontSize: 10, color: colors.muted, marginTop: 3 }}>{count} Courses</Text>
-      </Card>
-    </Pressable>
-  );
-}
-
-function CourseCard({ course, onOpen, mobile = false }) {
+function CourseCard({ course, onOpen, wide }) {
   const title = course.name || course.title || 'Course';
   const progress = Math.round(Number(course.progress_percentage || 0));
   return (
-    <Pressable onPress={() => onOpen(api.idOf(course))} style={({ pressed }) => ({ width: mobile ? '100%' : '100%', opacity: pressed ? 0.94 : 1 })}>
-      <Card style={{ padding: 0, overflow: 'hidden', minHeight: 250, marginBottom: 0 }}>
-        <View style={{ height: 88, backgroundColor: colors.purpleSoft, alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-          <View style={{ width: 58, height: 58, borderRadius: 16, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 30 }}>{course.icon || '📚'}</Text>
-          </View>
-          <View style={{ position: 'absolute', top: 9, left: 9, flexDirection: 'row', gap: 5 }}>
-            <Badge tone={course.is_free === false ? 'orange' : 'green'}>{course.is_free === false ? 'PAID' : 'FREE'}</Badge>
-          </View>
+    <Pressable onPress={() => onOpen(api.idOf(course))} style={({ pressed }) => ({ flex: wide ? 1 : undefined, minWidth: wide ? 270 : 240, maxWidth: wide ? 390 : 330, opacity: pressed ? 0.94 : 1 })}>
+      <Card style={{ padding: 0, overflow: 'hidden', height: 315 }}>
+        <View style={{ height: 105, backgroundColor: course.hero_color || '#32217B', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 44 }}>{course.icon || '📚'}</Text>
         </View>
         <View style={{ padding: 14, flex: 1 }}>
-          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 5 }}>
-            {categoriesOf(course).slice(0, 3).map(category => <Badge key={category} tone="purple">{category}</Badge>)}
-            <Badge tone="blue">{subjectOf(course)}</Badge>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
+            <Badge tone="purple">{course.category || 'General'}</Badge>
+            <Badge tone="green">{course.level || 'Beginner'}</Badge>
+            {course.is_enrolled && <Badge tone="pink">Enrolled</Badge>}
           </View>
-          <Text style={{ fontSize: 16, fontWeight: '900', color: colors.navy, marginTop: 9 }} numberOfLines={2}>{title}</Text>
-          <Text style={{ fontSize: 10, color: colors.muted, lineHeight: 16, marginTop: 5 }} numberOfLines={2}>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 16, fontWeight: '900', color: colors.navy, marginTop: 9 }} numberOfLines={2}>{title}</Text>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted, lineHeight: 16, marginTop: 5 }} numberOfLines={2}>
             {course.short_description || course.description || 'Structured learning with lessons, practice and assessments.'}
           </Text>
-          <View style={{ flexDirection: 'row', gap: 10, flexWrap: 'wrap', marginTop: 9 }}>
-            <Text style={{ fontSize: 10, color: colors.muted }}>▤ {course.lesson_count || course.lessons_count || 0} lessons</Text>
-            <Text style={{ fontSize: 10, color: colors.muted }}>◎ {course.quiz_count || 0} quizzes</Text>
-            <Text style={{ fontSize: 10, color: colors.muted }}>▧ {course.pdf_count || 0} resources</Text>
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 9 }}>
+            <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted }}>▤ {course.lesson_count || course.lessons_count || 0} lessons</Text>
+            <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted }}>◎ {course.quiz_count || 0} quizzes</Text>
+            <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted }}>▧ {course.pdf_count || 0} resources</Text>
           </View>
           {course.is_enrolled && (
             <View style={{ marginTop: 10 }}>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
-                <Text style={{ fontSize: 9, color: colors.muted }}>Your progress</Text>
-                <Text style={{ fontSize: 9, fontWeight: '900', color: colors.primary }}>{progress}%</Text>
+                <Text style={{ fontFamily: colors.fontFamily, fontSize: 9, color: colors.muted }}>Your progress</Text>
+                <Text style={{ fontFamily: colors.fontFamily, fontSize: 9, fontWeight: '900', color: colors.primary }}>{progress}%</Text>
               </View>
               <ProgressBar value={progress} />
             </View>
           )}
-          <Text style={{ fontSize: 11, fontWeight: '900', color: colors.primary, marginTop: 10 }}>View Course →</Text>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 11, fontWeight: '900', color: colors.primary, marginTop: 10 }}>View Course →</Text>
         </View>
       </Card>
     </Pressable>
@@ -90,15 +49,13 @@ function CourseCard({ course, onOpen, mobile = false }) {
 
 export default function StudentCoursesScreen({ openCourse }) {
   const { width } = useWindowDimensions();
-  const mobile = width < 600;
-  const tablet = width >= 600 && width < 1050;
-
+  const wide = width >= 1180;
   const [items, setItems] = useState([]);
-  const [categories, setCategories] = useState(FALLBACK_CATEGORIES);
-  const [subjects, setSubjects] = useState(FALLBACK_SUBJECTS);
+  const [categories, setCategories] = useState(fallbackCategories);
+  const [exams, setExams] = useState(fallbackExams);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
-  const [subject, setSubject] = useState('');
+  const [exam, setExam] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -107,13 +64,13 @@ export default function StudentCoursesScreen({ openCourse }) {
       setLoading(true);
       setError('');
       const [coursesResult, catalogResult] = await Promise.all([
-        api.studentCourses({ search: search.trim(), category, subject, free_only: false }),
+        api.studentCourses({ search: search.trim(), category, exam }),
         api.catalogCategories(),
       ]);
       setItems(api.listOf(coursesResult));
       if (catalogResult) {
         if (Array.isArray(catalogResult.categories) && catalogResult.categories.length) setCategories(catalogResult.categories);
-        if (Array.isArray(catalogResult.subjects) && catalogResult.subjects.length) setSubjects(catalogResult.subjects);
+        if (Array.isArray(catalogResult.exams) && catalogResult.exams.length) setExams(catalogResult.exams);
       }
     } catch (e) {
       setError(e?.message || 'Unable to load courses.');
@@ -122,114 +79,56 @@ export default function StudentCoursesScreen({ openCourse }) {
     }
   };
 
-  useEffect(() => { load(); }, [category, subject]);
+  useEffect(() => { load(); }, [category, exam]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
-    return items.filter(course => {
-      const text = [
-        course.name,
-        course.title,
-        course.description,
-        course.exam,
-        course.level,
-        course.language,
-        course.subject,
-        ...(Array.isArray(course.tags) ? course.tags : []),
-        ...categoriesOf(course),
-      ].filter(Boolean).join(' ').toLowerCase();
-      return text.includes(q);
-    });
+    return items.filter(c => [c.name, c.title, c.description, c.category, c.exam, c.level, ...(c.tags || [])].filter(Boolean).join(' ').toLowerCase().includes(q));
   }, [items, search]);
 
-  const categoryCounts = useMemo(() => categories
-    .map(name => ({ name, count: items.filter(course => categoriesOf(course).some(x => x.toLowerCase() === name.toLowerCase())).length }))
-    .filter(x => x.count > 0), [categories, items]);
-
-  const subjectCounts = useMemo(() => subjects
-    .map(name => ({ name, count: items.filter(course => subjectOf(course).toLowerCase() === name.toLowerCase()).length }))
-    .filter(x => x.count > 0), [subjects, items]);
-
-  const enrolled = useMemo(() => items.filter(x => x.is_enrolled).slice(0, 5), [items]);
-  const clearFilters = () => { setSearch(''); setCategory(''); setSubject(''); };
+  const submitSearch = () => load();
 
   if (error) return <AppShell><ErrorState title="Courses could not load" message={error} onRetry={load} /></AppShell>;
-  if (loading) return <AppShell><Loading label="Preparing your course portal…" /></AppShell>;
-
-  const gridWidth = mobile ? '100%' : tablet ? '48.5%' : '31.8%';
+  if (loading) return <AppShell><Loading label="Loading courses…" /></AppShell>;
 
   return (
     <AppShell>
-      <View style={{ marginBottom: 8 }}>
-        <Text style={{ fontSize: mobile ? 24 : 28, fontWeight: '900', color: colors.navy }}>Courses</Text>
-        <Text style={{ fontSize: 12, color: colors.muted, marginTop: 4 }}>Choose an exam category or subject and continue learning.</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 28, fontWeight: '900', color: colors.navy }}>Courses</Text>
+          <Text style={{ fontFamily: colors.fontFamily, fontSize: 12, color: colors.muted, marginTop: 4 }}>Explore published courses and continue your learning journey.</Text>
+        </View>
+        <Badge tone="purple">{filtered.length} Courses</Badge>
       </View>
 
-      <Card style={{ padding: 10, marginBottom: 14 }}>
-        <Field value={search} onChangeText={setSearch} placeholder="Search courses, exams, subjects…" />
-        <View style={{ flexDirection: mobile ? 'column' : 'row', gap: 8, marginTop: 2 }}>
-          <Button title="Search" onPress={load} style={{ flex: mobile ? undefined : 1 }} />
-          {(search || category || subject) && <Button title="Clear filters" variant="secondary" onPress={clearFilters} style={{ flex: mobile ? undefined : 1 }} />}
+      <Card style={{ marginTop: 16, backgroundColor: colors.hero, borderColor: colors.hero, padding: 18 }}>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 21, fontWeight: '900', color: '#fff' }}>Find the right course for you</Text>
+        <Text style={{ fontFamily: colors.fontFamily, fontSize: 11, color: '#D6D8F2', marginTop: 4 }}>Search by course, exam, topic or category.</Text>
+        <View style={{ flexDirection: wide ? 'row' : 'column', gap: 8, marginTop: 13 }}>
+          <View style={{ flex: 1 }}><Field value={search} onChangeText={setSearch} placeholder="Search courses, exams, topics…" /></View>
+          <Button title="Search" onPress={submitSearch} />
         </View>
       </Card>
 
-      <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 14 }}>
-        <Stat icon="📚" title="Courses Available" value={items.length} delta={`${filtered.length} shown`} tone="blue" />
-        <Stat icon="✓" title="Enrolled" value={items.filter(x => x.is_enrolled).length} delta="Keep learning" tone="green" />
-        <Stat icon="▤" title="Subjects" value={subjectCounts.length} delta="Across all courses" tone="pink" />
-        <Stat icon="🎯" title="Categories" value={categoryCounts.length} delta="Exam focused" tone="orange" />
+      <SectionTitle title="Explore by Category" />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        {categories.map(x => <Pressable key={x} onPress={() => setCategory(category === x ? '' : x)} style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 13, borderWidth: 1, borderColor: category === x ? colors.primary : colors.border, backgroundColor: category === x ? colors.primary : '#fff' }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 11, fontWeight: '900', color: category === x ? '#fff' : colors.text }}>{x}</Text></Pressable>)}
+      </ScrollView>
+
+      <SectionTitle title="Explore by Exam" />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        {exams.map(x => <Pressable key={x} onPress={() => setExam(exam === x ? '' : x)} style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 13, borderWidth: 1, borderColor: exam === x ? colors.primary : colors.border, backgroundColor: exam === x ? colors.primary : '#fff' }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 11, fontWeight: '900', color: exam === x ? '#fff' : colors.text }}>{x}</Text></Pressable>)}
+      </ScrollView>
+
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10 }}>
+        <View><Text style={{ fontFamily: colors.fontFamily, fontSize: 20, fontWeight: '900', color: colors.navy }}>All Courses</Text><Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted, marginTop: 3 }}>Courses currently available to students</Text></View>
+        {(category || exam || search) && <Button title="Clear filters" variant="secondary" onPress={() => { setSearch(''); setCategory(''); setExam(''); }} />}
       </View>
 
-      <SectionTitle title="Choose Course" subtitle="Browse by exam category." />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
-        {categoryCounts.slice(0, 12).map((item, i) => (
-          <TaxonomyCard
-            key={item.name}
-            title={item.name}
-            count={item.count}
-            icon={['🎓', '🚆', '🏦', '🏛️', '💻', '📚'][i % 6]}
-            active={category === item.name}
-            onPress={() => { setCategory(category === item.name ? '' : item.name); setSubject(''); }}
-            tone={['green', 'pink', 'purple', 'orange'][i % 4]}
-          />
-        ))}
-      </ScrollView>
-
-      <SectionTitle title="Popular Subjects" subtitle="The same subject can be available for multiple exams." />
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 10, paddingVertical: 4 }}>
-        {subjectCounts.slice(0, 12).map((item, i) => (
-          <TaxonomyCard
-            key={item.name}
-            title={item.name}
-            count={item.count}
-            icon={['⚛️', '🧪', '➗', '🌿', '📖', '🌐'][i % 6]}
-            active={subject === item.name}
-            onPress={() => { setSubject(subject === item.name ? '' : item.name); setCategory(''); }}
-            tone={['purple', 'green', 'orange', 'pink'][i % 4]}
-          />
-        ))}
-      </ScrollView>
-
-      <SectionTitle title="Continue Learning" subtitle="Your enrolled courses first." right={<Pressable onPress={() => { setCategory(''); setSubject(''); }}><Text style={{ fontSize: 11, fontWeight: '900', color: colors.primary }}>View all →</Text></Pressable>} />
-      {enrolled.length ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 12, paddingBottom: 4 }}>
-          {enrolled.map(course => <View key={api.idOf(course)} style={{ width: 280 }}><CourseCard course={course} onOpen={openCourse} /></View>)}
-        </ScrollView>
-      ) : (
-        <Empty title="No enrolled courses yet" message="Open any course below to start learning." />
-      )}
-
-      <SectionTitle title={category || subject ? `Courses in ${category || subject}` : 'All Courses'} subtitle={`${filtered.length} published course${filtered.length === 1 ? '' : 's'} available`} />
-      {filtered.length === 0 ? (
-        <Empty title="No courses found" message="Try another category, subject or search term." action={<Button title="Clear filters" variant="secondary" onPress={clearFilters} />} />
-      ) : (
+      {filtered.length === 0 ? <Empty title="No courses found" message="Try another category, exam or search term." /> : (
         <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 14 }}>
-          {filtered.map(course => (
-            <View key={api.idOf(course)} style={{ width: gridWidth }}>
-              <CourseCard course={course} onOpen={openCourse} mobile={mobile} />
-            </View>
-          ))}
+          {filtered.map(course => <CourseCard key={api.idOf(course)} course={course} onOpen={openCourse} wide={wide} />)}
         </View>
       )}
     </AppShell>
