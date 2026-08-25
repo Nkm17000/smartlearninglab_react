@@ -21,6 +21,26 @@ function textOf(item, ...keys) {
   return '';
 }
 
+// Course taxonomy is stored as an array in MongoDB (categories).
+// Keep the legacy singular category only as a backward-compatible fallback.
+function categoryNames(item) {
+  const values = Array.isArray(item?.categories)
+    ? item.categories
+        .map(value => {
+          if (value && typeof value === 'object') return textOf(value, 'name', 'title', 'label');
+          return String(value ?? '').trim();
+        })
+        .filter(Boolean)
+    : [];
+  if (values.length) return Array.from(new Set(values));
+  const legacy = textOf(item, 'category');
+  return legacy ? [legacy] : [];
+}
+
+function primaryCategory(item) {
+  return categoryNames(item)[0] || 'General';
+}
+
 function CourseCard({ course, onOpen, width, index }) {
   const title = textOf(course, 'name', 'title') || 'Course';
   const progress = Math.round(Number(course.progress_percentage || course.progress || 0));
@@ -42,7 +62,7 @@ function CourseCard({ course, onOpen, width, index }) {
         </View>
         <View style={{ padding: 16, flex: 1 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            <Badge tone="purple">{course.category || 'General'}</Badge>
+            <Badge tone="purple">{primaryCategory(course)}</Badge>
             <Badge tone="green">{course.level || 'Beginner'}</Badge>
             {course.is_enrolled && <Badge tone="pink">Enrolled</Badge>}
           </View>
@@ -112,7 +132,9 @@ export default function StudentCoursesScreen({ openCourse }) {
 
   const categoryStats = useMemo(() => {
     const map = new Map();
-    items.forEach(c => { const value = textOf(c, 'category') || 'General'; map.set(value, (map.get(value) || 0) + 1); });
+    items.forEach(course => {
+      categoryNames(course).forEach(name => map.set(name, (map.get(name) || 0) + 1));
+    });
     return categories.map(name => [name, map.get(name) || 0]);
   }, [items, categories]);
 
@@ -152,7 +174,7 @@ export default function StudentCoursesScreen({ openCourse }) {
           </View>
           <View style={{ width: wide ? 300 : '100%', minHeight: 135, borderRadius: 18, backgroundColor: 'rgba(255,255,255,0.10)', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={{ fontSize: wide ? 78 : 62 }}>{featured.icon || '📚'}</Text>
-            <Text style={{ fontFamily: colors.fontFamily, color: '#DAD6FF', fontSize: 9, marginTop: 2 }}>{featured.category || 'Learning'} · {featured.level || 'Beginner'}</Text>
+            <Text style={{ fontFamily: colors.fontFamily, color: '#DAD6FF', fontSize: 9, marginTop: 2 }}>{primaryCategory(featured)} · {featured.level || 'Beginner'}</Text>
           </View>
         </View>
       </Card>}

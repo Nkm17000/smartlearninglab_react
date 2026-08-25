@@ -29,12 +29,32 @@ function getText(item, ...keys) {
   return '';
 }
 
+// Quiz taxonomy is stored as an array in MongoDB (categories).
+// Use the array for display/filtering, with singular category only as a legacy fallback.
+function categoryNames(item) {
+  const values = Array.isArray(item?.categories)
+    ? item.categories
+        .map(value => {
+          if (value && typeof value === 'object') return getText(value, 'name', 'title', 'label');
+          return String(value ?? '').trim();
+        })
+        .filter(Boolean)
+    : [];
+  if (values.length) return Array.from(new Set(values));
+  const legacy = getText(item, 'category');
+  return legacy ? [legacy] : [];
+}
+
+function primaryCategory(item) {
+  return categoryNames(item)[0] || 'General';
+}
+
 function QuizCard({ quiz, onOpen, width, index }) {
   const title = getText(quiz, 'title', 'name') || 'Practice Quiz';
   const questions = Array.isArray(quiz.question_ids) ? quiz.question_ids.length : Number(quiz.question_count || quiz.questions_count || 0);
   const duration = Number(quiz.duration_minutes || quiz.duration || 20);
   const passing = Number(quiz.passing_percentage || quiz.pass_percentage || 60);
-  const category = getText(quiz, 'category', 'exam') || 'General';
+  const category = primaryCategory(quiz);
   const hero = quiz.hero_color || heroPalette[index % heroPalette.length];
   const subtitle = getText(quiz, 'description', 'short_description') || 'Practice important concepts, test yourself and improve your score.';
 
@@ -57,7 +77,7 @@ function QuizCard({ quiz, onOpen, width, index }) {
             <Badge tone="orange">{duration} min</Badge>
             <Badge tone="green">Pass {passing}%</Badge>
           </View>
-          {quiz.exam && quiz.category && <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.subtle, marginTop: 11 }}>For {quiz.exam} · {quiz.category}</Text>}
+          {quiz.exam && <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.subtle, marginTop: 11 }}>For {quiz.exam} · {primaryCategory(quiz)}</Text>}
           <Text style={{ fontFamily: colors.fontFamily, fontSize: 12, fontWeight: '900', color: colors.primary, marginTop: 'auto', paddingTop: 15 }}>Start Quiz →</Text>
         </View>
       </Card>
@@ -130,15 +150,17 @@ export default function StudentQuizzesScreen({ openQuiz }) {
   }, [items]);
 
   const categories = useMemo(() => {
-    const values = items.map(x => getText(x, 'category')).filter(Boolean);
+    const values = items.flatMap(x => categoryNames(x));
     return ['All', ...Array.from(new Set(values))];
   }, [items]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return items.filter(x => {
-      const text = [x.title, x.name, x.description, x.category, x.exam, x.subject, x.topic].filter(Boolean).join(' ').toLowerCase();
-      return (!q || text.includes(q)) && (!category || category === 'All' || x.category === category) && (!exam || x.exam === exam) && (!subject || x.subject === subject || x.topic === subject);
+      const names = categoryNames(x);
+      const text = [x.title, x.name, x.description, ...names, x.exam, x.subject, x.topic].filter(Boolean).join(' ').toLowerCase();
+      const categoryMatches = !category || category === 'All' || names.includes(category);
+      return (!q || text.includes(q)) && categoryMatches && (!exam || x.exam === exam) && (!subject || x.subject === subject || x.topic === subject);
     });
   }, [items, search, category, exam, subject]);
 
