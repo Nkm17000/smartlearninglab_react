@@ -1,107 +1,128 @@
-import React,{useState} from 'react';
-import {Alert,Linking,ScrollView,Text,View} from 'react-native';
+import React, {useMemo, useState} from 'react';
+import {Alert, Text, View} from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import {AppShell,Badge,Button,Card,DropdownSelect,Field,Header} from '../../components/UI';
+import {AppShell, Badge, Button, Card, DropdownSelect, Field, Header} from '../../components/UI';
 import {api} from '../../services/api';
 import {colors} from '../../theme';
 
 const CATEGORIES=['SSC','Banking','UPSC','English Spoken','Railway','Teaching','Defence','State Exams','Computer','General','Other'];
 
-const SAMPLE = {
-  title: "English Grammar - Bulk Quiz",
-  category: "English",
-  description: "10-question English grammar practice test",
-  passing_percentage: 60,
-  duration_minutes: 20,
-  questions: [
-    {
-      question: "Choose the correct sentence.",
-      options: [
-        "He go to school every day.",
-        "He goes to school every day.",
-        "He going to school every day.",
-        "He gone to school every day."
-      ],
-      correct_answer: 1,
-      explanation: "With the singular subject 'He', the present simple verb takes 's': 'He goes'."
-    },
-    {
-      question: "Identify the noun in the sentence: 'The boy is reading a book.'",
-      options: ["The", "is", "boy", "reading"],
-      correct_answer: 2,
-      explanation: "'Boy' is a noun because it names a person."
-    },
-    {
-      question: "Choose the correct article: 'She is ___ honest woman.'",
-      options: ["a", "an", "the", "no article"],
-      correct_answer: 1,
-      explanation: "'Honest' begins with a vowel sound, so 'an' is used."
-    },
-    {
-      question: "Choose the correct plural form of 'child'.",
-      options: ["childs", "childes", "children", "childrens"],
-      correct_answer: 2,
-      explanation: "'Children' is the irregular plural form of 'child'."
-    },
-    {
-      question: "Which word is a pronoun in: 'Ravi said that he would help me.'?",
-      options: ["Ravi", "said", "he", "help"],
-      correct_answer: 2,
-      explanation: "'He' is a pronoun because it replaces the noun 'Ravi'."
-    },
-    {
-      question: "Choose the correct preposition: 'She is good ___ mathematics.'",
-      options: ["in", "at", "on", "for"],
-      correct_answer: 1,
-      explanation: "The standard expression is 'good at' something."
-    },
-    {
-      question: "What is the past tense of 'go'?",
-      options: ["goed", "gone", "went", "going"],
-      correct_answer: 2,
-      explanation: "'Went' is the simple past tense of 'go'."
-    },
-    {
-      question: "Choose the correct passive voice: 'The teacher praised the student.'",
-      options: [
-        "The student praised the teacher.",
-        "The student was praised by the teacher.",
-        "The student is praised by the teacher.",
-        "The teacher was praised by the student."
-      ],
-      correct_answer: 1,
-      explanation: "The object becomes the subject in passive voice: 'The student was praised by the teacher'."
-    },
-    {
-      question: "Choose the correct indirect speech: He said, 'I am tired.'",
-      options: [
-        "He said that I am tired.",
-        "He said that he was tired.",
-        "He says that he was tired.",
-        "He said that he is tired."
-      ],
-      correct_answer: 1,
-      explanation: "In reported speech, 'I' changes to 'he' and 'am' changes to 'was'."
-    },
-    {
-      question: "Choose the correctly spelled word.",
-      options: [
-        "Accomodation",
-        "Acommodation",
-        "Accommodation",
-        "Accommadation"
-      ],
-      correct_answer: 2,
-      explanation: "'Accommodation' is the correct spelling."
-    }
-  ]
-};
+const SAMPLE_MULTI = [
+  {
+    title: 'English Grammar - Noun',
+    category: 'English',
+    description: 'Noun practice test',
+    passing_percentage: 60,
+    duration_minutes: 20,
+    questions: [
+      {
+        question: 'Choose the correct plural form.',
+        options: ['Phenomenons', 'Phenomena', 'Phenomenas', 'Phenomenae'],
+        correct_answer: 1,
+        explanation: "'Phenomena' is the standard plural of 'phenomenon'."
+      }
+    ]
+  },
+  {
+    title: 'English Grammar - Pronoun',
+    category: 'English',
+    description: 'Pronoun practice test',
+    passing_percentage: 60,
+    duration_minutes: 20,
+    questions: [
+      {
+        question: 'Choose the correct relative pronoun: The candidate ___ application was rejected appealed to the board.',
+        options: ['who', 'whom', 'whose', 'which'],
+        correct_answer: 2,
+        explanation: "'Whose' indicates possession."
+      }
+    ]
+  }
+];
+
+const SAMPLE_SINGLE = SAMPLE_MULTI[0];
+
+function asQuizList(value){
+  if(Array.isArray(value)) return value;
+  if(value && Array.isArray(value.quizzes)) return value.quizzes;
+  if(value && typeof value==='object') return [value];
+  return [];
+}
+
+function resolveCorrectAnswer(value, options){
+  if(typeof value==='number' && Number.isInteger(value)) return value;
+  if(typeof value==='string'){
+    const v=value.trim();
+    if(/^[A-Za-z]$/.test(v)) return v.toUpperCase().charCodeAt(0)-65;
+    if(/^\d+$/.test(v)) return Number(v);
+    const index=options.findIndex(x=>String(x).trim()===v);
+    if(index>=0) return index;
+  }
+  return NaN;
+}
+
+function validateQuizPayload(payload){
+  const quizzes=asQuizList(payload);
+  if(!quizzes.length) throw new Error('Paste one quiz object, an array of quiz objects, or {"quizzes":[...]}.' );
+  if(quizzes.length>500) throw new Error('Maximum 500 quizzes per upload.');
+
+  const titles=new Set();
+  quizzes.forEach((quiz,qi)=>{
+    const n=qi+1;
+    if(!quiz || typeof quiz!=='object' || Array.isArray(quiz)) throw new Error(`Quiz ${n} must be a JSON object.`);
+    const title=String(quiz.title||quiz.name||'').trim();
+    if(!title) throw new Error(`Quiz ${n}: title is required.`);
+    const key=title.toLowerCase();
+    if(titles.has(key)) throw new Error(`Quiz ${n}: duplicate title '${title}'.`);
+    titles.add(key);
+    if(!Array.isArray(quiz.questions)||quiz.questions.length<1) throw new Error(`Quiz ${n} (${title}): questions must contain at least one question.`);
+    quiz.questions.forEach((q,qi2)=>{
+      const qn=qi2+1;
+      if(!q || typeof q!=='object') throw new Error(`Quiz ${n}, question ${qn}: invalid question object.`);
+      if(!String(q.question||'').trim()) throw new Error(`Quiz ${n}, question ${qn}: question text is empty.`);
+      if(!Array.isArray(q.options)||q.options.length<2) throw new Error(`Quiz ${n}, question ${qn}: provide at least two options.`);
+      if(q.options.some(x=>!String(x).trim())) throw new Error(`Quiz ${n}, question ${qn}: options cannot be empty.`);
+      const correct=resolveCorrectAnswer(q.correct_answer ?? q.answer, q.options);
+      if(!Number.isInteger(correct)||correct<0||correct>=q.options.length){
+        throw new Error(`Quiz ${n}, question ${qn}: correct_answer must be a zero-based index, A/B/C..., or an exact option.`);
+      }
+    });
+  });
+  return quizzes;
+}
 
 export default function AdminBulkContentScreen({onBack}){
  const [tab,setTab]=useState('quiz');
- const [quizJson,setQuizJson]=useState(JSON.stringify(SAMPLE,null,2));
+ const [quizJson,setQuizJson]=useState(JSON.stringify(SAMPLE_MULTI,null,2));
+ const [quizFile,setQuizFile]=useState(null);
  const [file,setFile]=useState(null),[title,setTitle]=useState(''),[category,setCategory]=useState('General'),[level,setLevel]=useState('Beginner'),[language,setLanguage]=useState('English');
  const [busy,setBusy]=useState(false),[result,setResult]=useState(null);
+
+ const quizPreview=useMemo(()=>{
+   try{
+     const parsed=JSON.parse(quizJson);
+     const list=asQuizList(parsed);
+     const questions=list.reduce((sum,x)=>sum+(Array.isArray(x?.questions)?x.questions.length:0),0);
+     return {count:list.length,questions,error:null};
+   }catch(e){return {count:0,questions:0,error:e.message};}
+ },[quizJson]);
+
+ const pickQuizJson=async()=>{
+   const r=await DocumentPicker.getDocumentAsync({type:['application/json','text/plain'],copyToCacheDirectory:true,multiple:false});
+   if(!r.canceled&&r.assets?.[0]) setQuizFile(r.assets[0]);
+ };
+
+ const loadSelectedQuizFile=async()=>{
+   if(!quizFile) return;
+   try{
+     const response=await fetch(quizFile.uri);
+     if(!response.ok) throw new Error('Unable to read the selected JSON file.');
+     const text=await response.text();
+     JSON.parse(text);
+     setQuizJson(text);
+     setResult(null);
+   }catch(e){Alert.alert('JSON file',e.message||'Unable to read the selected file.');}
+ };
 
  const pickPdf=async()=>{
    const r=await DocumentPicker.getDocumentAsync({type:'application/pdf',copyToCacheDirectory:true,multiple:false});
@@ -110,46 +131,26 @@ export default function AdminBulkContentScreen({onBack}){
 
  const createQuiz=async()=>{
    try{
-     setBusy(true);
-     setResult(null);
-
+     setBusy(true);setResult(null);
      let data;
-     try{
-       data=JSON.parse(quizJson);
-     }catch(e){
-       throw new Error(`Invalid JSON: ${e.message}`);
-     }
-
-     if(!data || typeof data!=='object' || Array.isArray(data)){
-       throw new Error('The quiz JSON must be a JSON object.');
-     }
-     if(!String(data.title||'').trim()){
-       throw new Error('Quiz title is required.');
-     }
-     if(!Array.isArray(data.questions)||data.questions.length<1){
-       throw new Error('questions must contain at least one question.');
-     }
-
-     data.questions.forEach((q,i)=>{
-       const n=i+1;
-       if(!q || typeof q!=='object') throw new Error(`Question ${n} must be an object.`);
-       if(!String(q.question||'').trim()) throw new Error(`Question ${n}: question text is empty.`);
-       if(!Array.isArray(q.options)||q.options.length<2) throw new Error(`Question ${n}: provide at least two options.`);
-       if(q.options.some(x=>!String(x).trim())) throw new Error(`Question ${n}: options cannot be empty.`);
-       const correct=Number(q.correct_answer);
-       if(!Number.isInteger(correct)||correct<0||correct>=q.options.length){
-         throw new Error(`Question ${n}: correct_answer must be a zero-based index from 0 to ${q.options.length-1}.`);
-       }
-     });
-
+     try{data=JSON.parse(quizJson);}catch(e){throw new Error(`Invalid JSON: ${e.message}`);}
+     validateQuizPayload(data);
      const d=await api.bulkQuiz(data);
      setResult({kind:'quiz',...d});
-     Alert.alert('Quiz created',`${d.question_count} questions were saved as a draft.`);
-   }catch(e){
-     Alert.alert('Bulk quiz',e.message||'Unable to create quiz.');
-   }finally{
-     setBusy(false);
-   }
+     Alert.alert('Quiz drafts created',d.message||`${d.quiz_count||1} quiz draft(s) created.`);
+   }catch(e){Alert.alert('Bulk quiz',e.message||'Unable to create quiz drafts.');}
+   finally{setBusy(false);}
+ };
+
+ const uploadQuizFile=async()=>{
+   try{
+     setBusy(true);setResult(null);
+     if(!quizFile) throw new Error('Choose a JSON file first.');
+     const d=await api.bulkQuizFile(quizFile);
+     setResult({kind:'quiz',...d});
+     Alert.alert('Quiz drafts created',d.message||`${d.quiz_count||1} quiz draft(s) created.`);
+   }catch(e){Alert.alert('JSON upload',e.message||'Unable to create quiz drafts.');}
+   finally{setBusy(false);}
  };
 
  const createCourse=async()=>{
@@ -164,37 +165,62 @@ export default function AdminBulkContentScreen({onBack}){
  };
 
  return <AppShell>
-   <Header eyebrow="Admin only" title="Bulk Content Studio" subtitle="Create a complete quiz from JSON or turn a study PDF into a reviewable course draft." right={<Button title="← Dashboard" variant="secondary" onPress={onBack}/>}/>
+   <Header eyebrow="Nitin Mittal Innovation" title="Bulk Content Studio" subtitle="Create one quiz per topic from a single JSON file, or create a course draft from a study PDF." right={<Button title="← Dashboard" variant="secondary" onPress={onBack}/>}/>
+   <Card style={{backgroundColor:'#F4F1FF',borderColor:'#DDD6FE'}}>
+     <Text style={{fontSize:16,fontWeight:'900',color:colors.navy}}>Content workflow</Text>
+     <Text style={{color:colors.muted,lineHeight:20,marginTop:5}}>No admin username or password is displayed here. Content is created as drafts and can be reviewed before publishing.</Text>
+   </Card>
    <View style={{flexDirection:'row',gap:8,marginBottom:14,flexWrap:'wrap'}}>
      <Button title="📝 Bulk Quiz" onPress={()=>setTab('quiz')} variant={tab==='quiz'?'primary':'secondary'}/>
      <Button title="📄 PDF → Course" onPress={()=>setTab('course')} variant={tab==='course'?'primary':'secondary'}/>
    </View>
 
-   {tab==='quiz' ? <Card>
-     <Text style={{fontSize:21,fontWeight:'900',color:colors.navy}}>Bulk Quiz JSON</Text>
-     <Text style={{color:colors.muted,lineHeight:20,marginTop:5}}>Paste 1, 10, 50 or more MCQs. The backend validates every option and correct answer, then saves the quiz as a draft.</Text>
-     <Field label="Quiz JSON" value={quizJson} onChangeText={setQuizJson} multiline placeholder="Paste JSON here..." style={{minHeight:420}}/>
-     <View style={{flexDirection:'row',gap:8,flexWrap:'wrap'}}><Button title={busy?'Creating…':'Create Quiz Draft'} onPress={createQuiz} disabled={busy}/><Button title="Reset Sample" variant="secondary" onPress={()=>setQuizJson(JSON.stringify(SAMPLE,null,2))}/></View>
-     <Card style={{marginTop:14,backgroundColor:'#F8F9FD'}}>
-       <Text style={{fontWeight:'900',color:colors.navy}}>Required format</Text>
-       <Text style={{fontFamily:'monospace',fontSize:11,color:colors.text,marginTop:8}}>{`{
-  "title": "English Grammar - Bulk Quiz",
+   {tab==='quiz' ? <>
+     <Card>
+       <Text style={{fontSize:21,fontWeight:'900',color:colors.navy}}>Bulk Quiz JSON</Text>
+       <Text style={{color:colors.muted,lineHeight:20,marginTop:5}}>You can paste one quiz or many quizzes. Every quiz object becomes a separate quiz draft. For your 18-topic English file, the result will be 18 English quiz drafts, with each topic's questions kept inside its own quiz.</Text>
+       <View style={{flexDirection:'row',gap:8,flexWrap:'wrap',marginTop:12}}>
+         <Button title="📂 Choose JSON file" variant="secondary" onPress={pickQuizJson}/>
+         {quizFile&&<Button title="Load selected file" variant="secondary" onPress={loadSelectedQuizFile}/>} 
+       </View>
+       {quizFile&&<Badge tone="green">Selected: {quizFile.name}</Badge>}
+       <Field label="Quiz JSON" value={quizJson} onChangeText={setQuizJson} multiline placeholder="Paste one quiz object or an array of quiz objects..." style={{minHeight:420}}/>
+       <View style={{flexDirection:'row',gap:8,flexWrap:'wrap'}}>
+         <Button title={busy?'Creating…':'Create Quiz Drafts'} onPress={createQuiz} disabled={busy}/>
+         <Button title={busy?'Uploading…':'Upload JSON & Create'} variant="secondary" onPress={uploadQuizFile} disabled={busy||!quizFile}/>
+         <Button title="Reset to Multiple Quiz Format" variant="secondary" onPress={()=>{setQuizJson(JSON.stringify(SAMPLE_MULTI,null,2));setQuizFile(null);setResult(null)}} disabled={busy}/>
+         <Button title="Reset to Single Quiz Format" variant="secondary" onPress={()=>{setQuizJson(JSON.stringify(SAMPLE_SINGLE,null,2));setQuizFile(null);setResult(null)}} disabled={busy}/>
+       </View>
+       <View style={{marginTop:10,flexDirection:'row',gap:8,flexWrap:'wrap'}}>
+         <Badge tone={quizPreview.error?'red':'blue'}>{quizPreview.error?'Invalid JSON':`${quizPreview.count} quiz${quizPreview.count===1?'':'zes'} · ${quizPreview.questions} question${quizPreview.questions===1?'':'s'}`}</Badge>
+         {!quizPreview.error&&quizPreview.count>1&&<Badge tone="purple">1 quiz per topic</Badge>}
+       </View>
+     </Card>
+
+     <Card style={{backgroundColor:'#F8F9FD'}}>
+       <Text style={{fontWeight:'900',color:colors.navy}}>Accepted formats</Text>
+       <Text style={{fontFamily:'monospace',fontSize:11,color:colors.text,marginTop:8}}>{`Single quiz:
+{
+  "title": "English Grammar - Noun",
   "category": "English",
   "description": "10-question practice test",
   "passing_percentage": 60,
   "duration_minutes": 20,
   "questions": [
-    {
-      "question": "Question text",
-      "options": ["A", "B", "C", "D"],
-      "correct_answer": 1,
-      "explanation": "Why option B is correct"
-    }
+    { "question": "Question text", "options": ["A","B","C","D"], "correct_answer": 1, "explanation": "Why B is correct" }
   ]
-}`}</Text>
-       <Text style={{color:colors.muted,lineHeight:20,marginTop:10}}>correct_answer is zero-based: 0 = first option, 1 = second option, 2 = third option, 3 = fourth option. Quiz categories are flexible, so values such as English, Grammar, CAT, Java or Banking are accepted.</Text>
+}
+
+Multiple quizzes (recommended for your 18 topics):
+[
+  { "title": "English Grammar - Noun", "category": "English", "questions": [...] },
+  { "title": "English Grammar - Pronoun", "category": "English", "questions": [...] }
+]
+
+Also accepted: { "quizzes": [ ... ] }`}</Text>
+       <Text style={{color:colors.muted,lineHeight:20,marginTop:10}}>correct_answer can be a zero-based number (0, 1, 2, 3), A/B/C/D, a numeric string, or the exact option text. The backend validates every quiz before inserting anything.</Text>
      </Card>
-   </Card> : <Card>
+   </> : <Card>
      <Text style={{fontSize:21,fontWeight:'900',color:colors.navy}}>PDF → Course Generator</Text>
      <Text style={{color:colors.muted,lineHeight:20,marginTop:5}}>Upload an educational PDF in almost any normal textbook/tutorial layout. The importer first uses the PDF outline, then a detected Contents/Table of Contents, then heading typography/numbering as a fallback. It preserves source order and page ranges, keeps the original PDF, and never invents missing content.</Text>
      <Button title={file?`Selected: ${file.name}`:'Choose PDF'} variant="secondary" onPress={pickPdf} style={{marginTop:14}}/>
@@ -205,18 +231,21 @@ export default function AdminBulkContentScreen({onBack}){
        <View style={{flex:1,minWidth:220}}><DropdownSelect label="Language" value={language} onChange={setLanguage} options={['English','Hindi','Hinglish','Other'].map(x=>({value:x,label:x}))}/></View>
      </View>
      <Button title={busy?'Processing PDF…':'Generate Course Draft'} onPress={createCourse} disabled={busy}/>
-     <Card style={{marginTop:14,backgroundColor:'#F8F9FD'}}><Text style={{fontWeight:'900',color:colors.navy}}>PDF format — no fixed template required</Text><Text style={{color:colors.text,lineHeight:21,marginTop:7}}>✓ Normal text PDF, textbook, tutorial, study guide or manual is supported{`\n`}✓ A PDF outline/bookmark tree is preferred when available{`\n`}✓ A Contents/Table of Contents page is helpful but not mandatory{`\n`}✓ Numbered chapters/sections such as 1, 1.1, 1.2 are understood{`\n`}✓ Publisher-specific layouts are supported; the importer does not depend on one exact design{`\n`}✓ Bullets, examples, exercises, rules and paragraphs are preserved as source text{`\n`}✓ The original PDF is stored and each lesson keeps its source page range{`\n`}✓ If the uploaded PDF is incomplete, missing topics are not replaced with invented text{`\n`}✕ A scanned/image-only PDF needs OCR before editable text lessons can be generated</Text></Card>
-     <Card style={{marginTop:10,backgroundColor:'#F0EEFF',borderColor:'#C7D2FE'}}><Text style={{fontWeight:'900',color:colors.navy}}>AI prompt for creating a course PDF</Text><Text style={{color:colors.text,lineHeight:21,marginTop:7}}>“Create a complete educational course PDF. Use a clear learning hierarchy such as chapters and sections, but do not depend on a specific template. If a Contents/Table of Contents or PDF outline is used, make sure every listed chapter/section has its full body later in the document. Keep headings consistent enough to be recognized, preserve examples, tables, exercises and code, and do not omit or merge educational sections.”</Text></Card>
+     <Card style={{marginTop:14,backgroundColor:'#F8F9FD'}}><Text style={{fontWeight:'900',color:colors.navy}}>PDF format — no fixed template required</Text><Text style={{color:colors.text,lineHeight:21,marginTop:7}}>✓ Normal text PDF, textbook, tutorial, study guide or manual is supported{`\n`}✓ A PDF outline/bookmark tree is preferred when available{`\n`}✓ A Contents/Table of Contents page is helpful but not mandatory{`\n`}✓ Numbered chapters/sections such as 1, 1.1, 1.2 are understood{`\n`}✓ Publisher-specific layouts are supported{`\n`}✓ Bullets, examples, exercises, rules and paragraphs are preserved as source text{`\n`}✓ The original PDF is stored and each lesson keeps its source page range{`\n`}✕ A scanned/image-only PDF needs OCR before editable text lessons can be generated</Text></Card>
      <Card style={{marginTop:10,backgroundColor:'#FFF7ED',borderColor:'#FED7AA'}}><Text style={{fontWeight:'900',color:'#9A3412'}}>Important</Text><Text style={{color:'#9A3412',lineHeight:20,marginTop:5}}>The importer does not invent missing chapter content. If a topic is present in the TOC but its body is absent from the uploaded PDF, that lesson remains a draft and clearly shows that source content is missing.</Text></Card>
    </Card>}
 
    {result&&<Card style={{marginTop:14,borderColor:colors.success}}>
-     <Badge tone="green">Draft created</Badge>
-     <Text style={{fontSize:18,fontWeight:'900',color:colors.navy,marginTop:8}}>{result.kind==='quiz'?'Quiz ready for review':'Course ready for review'}</Text>
+     <Badge tone="green">Drafts created</Badge>
+     <Text style={{fontSize:18,fontWeight:'900',color:colors.navy,marginTop:8}}>{result.kind==='quiz'?'Quiz drafts ready for review':'Course ready for review'}</Text>
      <Text style={{color:colors.muted,marginTop:5}}>{result.message}</Text>
-     {result.kind==='quiz'&&<Text style={{marginTop:8,fontWeight:'800'}}>{result.question_count} questions</Text>}
-     {result.kind==='course'&&<><Text style={{marginTop:8,fontWeight:'800'}}>{result.module_count} topics · {result.lesson_count} lessons</Text>{result.source_topic_count!=null&&<Text style={{fontSize:12,color:colors.muted,marginTop:5}}>PDF TOC topics: {result.source_topic_count} · detailed source content found: {result.source_topics_with_content||0}</Text>}</>}
-     <Text style={{fontSize:11,color:colors.muted,marginTop:8}}>Open Courses → Course Builder to review, edit and publish topics/lessons.</Text>
+     {result.kind==='quiz'&&<>
+       <Text style={{marginTop:8,fontWeight:'900'}}>{result.quiz_count||1} quiz{(result.quiz_count||1)===1?'':'zes'} · {result.question_count||0} questions</Text>
+       {Array.isArray(result.created_quizzes)&&<View style={{marginTop:8}}>{result.created_quizzes.slice(0,30).map((x,i)=><Text key={`${x.source_index}-${i}`} style={{color:colors.text,lineHeight:20}}>✓ {x.quiz?.title||`Quiz ${x.source_index}`} — {x.question_count} questions</Text>)}</View>}
+       {(result.quiz_count||0)>30&&<Text style={{fontSize:12,color:colors.muted,marginTop:5}}>Only the first 30 are shown here. All drafts were created.</Text>}
+       <Text style={{fontSize:11,color:colors.muted,marginTop:8}}>Open Test Series / Quizzes to review, edit and publish each topic quiz.</Text>
+     </>}
+     {result.kind==='course'&&<><Text style={{marginTop:8,fontWeight:'800'}}>{result.module_count} topics · {result.lesson_count} lessons</Text><Text style={{fontSize:11,color:colors.muted,marginTop:8}}>Open Courses → Course Builder to review, edit and publish topics/lessons.</Text></>}
    </Card>}
  </AppShell>
 }

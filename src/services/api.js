@@ -2070,6 +2070,9 @@ export const api = {
       }
     ),
 
+  bulkQuizFile: file =>
+    upload('/admin/bulk/quiz-file', file),
+
   bulkCoursePdf: (
     file,
     fields = {}
