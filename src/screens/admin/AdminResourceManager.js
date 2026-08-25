@@ -1,8 +1,8 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,Linking,Text,View} from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
+import {Alert,Linking,Platform,Text,View} from 'react-native';
 import {Badge,Button,Card,DropdownSelect,Empty,Field,Loading,Header} from '../../components/UI';
 import {api} from '../../services/api';
+import {pickFile} from '../../services/filePicker';
 import {colors} from '../../theme';
 
 const TYPES=[
@@ -16,7 +16,7 @@ export default function AdminResourceManager({scope,id,compact=false,onClose,man
  const [title,setTitle]=useState(''),[description,setDescription]=useState(''),[url,setUrl]=useState(''),[file,setFile]=useState(null),[busy,setBusy]=useState(false);
  const load=async()=>{try{const d=scope==='course'?await api.courseResources(id):await api.lessonResources(id);setItems(api.listOf(d))}catch(e){setItems([])}};
  useEffect(()=>{load()},[scope,id]);
- const pick=async()=>{try{const r=await DocumentPicker.getDocumentAsync({type:'*/*',copyToCacheDirectory:true,multiple:false});if(!r.canceled&&r.assets?.[0]){const f=r.assets[0];setFile(f);setTitle(title||f.name);setType(f.mimeType==='application/pdf'?'pdf':type)}}catch(e){Alert.alert('File',e.message)}};
+ const pick=async()=>{try{const f=await pickFile({accept:'*/*'});if(f){setFile(f);setTitle(title||f.name);setType(f.mimeType==='application/pdf'?'pdf':type)}}catch(e){Alert.alert('File',e.message)}};
  const save=async()=>{try{setBusy(true);if(mode==='upload'){
    if(!file)throw new Error('Choose a file first.');
    const fields={title:title||file.name,description,resource_type:type};
@@ -29,7 +29,7 @@ export default function AdminResourceManager({scope,id,compact=false,onClose,man
  }
  setTitle('');setDescription('');setUrl('');setFile(null);
  }catch(e){Alert.alert('Resource',e.message)}finally{setBusy(false)}};
- const remove=async item=>{try{if(scope==='course')await api.deleteCourseResource(id,api.idOf(item));else await api.del(`/admin/lessons/${id}/resources/${api.idOf(item)}`);setItems(x=>(x||[]).filter(r=>api.idOf(r)!==api.idOf(item)))}catch(e){Alert.alert('Resource',e.message)}};
+ const remove=async item=>{const ok=Platform.OS==='web'&&typeof window!=='undefined'?window.confirm(`Delete resource \"${item.title||'this resource'}\"?`):await new Promise(resolve=>Alert.alert('Delete resource?',`Delete \"${item.title||'this resource'}\"?`,[{text:'Cancel',style:'cancel',onPress:()=>resolve(false)},{text:'Delete',style:'destructive',onPress:()=>resolve(true)}]));if(!ok)return;try{if(scope==='course')await api.deleteCourseResource(id,api.idOf(item));else await api.del(`/admin/lessons/${id}/resources/${api.idOf(item)}`);setItems(x=>(x||[]).filter(r=>api.idOf(r)!==api.idOf(item)))}catch(e){Alert.alert('Resource',e.message)}};
  if(items===null)return <Loading label="Loading resources…"/>;
  const heading=managerTitle|| (scope==='course'?'Course resources':'Lesson resources');
  const openItem=item=>{if(!item?.url)return;const base=api.BASE_URL?api.BASE_URL.replace('/api/v1',''):'';Linking.openURL(item.url.startsWith('http')?item.url:`${base}${item.url}`)};

@@ -1,9 +1,9 @@
 import React, {useEffect, useMemo, useState} from 'react';
 import {Alert, Text, View} from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
 import {AppShell, Badge, Button, Card, DropdownSelect, Field, Header} from '../../components/UI';
 import {TaxonomyPicker} from '../../components/TaxonomyPicker';
 import {api} from '../../services/api';
+import {pickFile} from '../../services/filePicker';
 import {colors} from '../../theme';
 
 const SAMPLE_MULTI = [
@@ -155,10 +155,10 @@ export default function AdminBulkContentScreen({onBack}) {
   };
 
   const pickPdf = async () => {
-    const r = await DocumentPicker.getDocumentAsync({type: 'application/pdf', copyToCacheDirectory: true, multiple: false});
-    if (!r.canceled && r.assets?.[0]) {
-      setFile(r.assets[0]);
-      setTitle(title || r.assets[0].name.replace(/\.pdf$/i, ''));
+    const f = await pickFile({accept: 'application/pdf'});
+    if (f) {
+      setFile(f);
+      setTitle(title || f.name.replace(/\.pdf$/i, ''));
     }
   };
 
@@ -188,23 +188,7 @@ export default function AdminBulkContentScreen({onBack}) {
       setResult(null);
       if (!quizFile) throw new Error('Choose a JSON file first.');
       if (!ready) throw new Error('Select at least one category and one subcategory before uploading quizzes.');
-
-      // Prefer the dedicated multipart endpoint. If an older backend is still
-      // deployed and does not expose /quiz-file yet, fall back to the JSON
-      // endpoint so the admin upload remains usable during a rolling deploy.
-      let d;
-      try {
-        d = await api.bulkQuizFile(quizFile, selection);
-      } catch (uploadError) {
-        if (!/404|not found|quiz-file/i.test(String(uploadError?.message || ''))) {
-          throw uploadError;
-        }
-        const text = await (await fetch(quizFile.uri)).text();
-        const parsed = JSON.parse(text);
-        validateQuizPayload(parsed);
-        d = await api.bulkQuiz({ ...selection, quizzes: asQuizList(parsed) });
-      }
-
+      const d = await api.bulkQuizFile(quizFile, selection);
       setResult({kind: 'quiz', ...d});
       Alert.alert('Quiz drafts created', d.message || `${d.quiz_count || 1} quiz draft(s) created.`);
     } catch (e) {
@@ -224,8 +208,6 @@ export default function AdminBulkContentScreen({onBack}) {
       const d = await api.bulkCoursePdf(file, {
         title,
         subject: subject.trim(),
-        category: selection.categories?.[0] || '',
-        subcategory: selection.subcategories?.[0] || '',
         ...selection,
         level,
         language,

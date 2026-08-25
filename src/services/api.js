@@ -1,10 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-export const BASE_URL = (
+export const BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
-  'https://smartlearninglab-526006260073.asia-south1.run.app/api/v1'
-).replace(/\/$/, '');
+  'http://127.0.0.1:8000/api/v1';
 
 const TOKEN_KEY = 'sll_token';
 const USER_KEY = 'sll_user';
@@ -76,23 +75,24 @@ async function uploadFile(path, file, fields = {}) {
   const form = new FormData();
   Object.entries(fields).forEach(([key, value]) => {
     if (value !== undefined && value !== null) {
-      form.append(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+      form.append(key, Array.isArray(value) ? value.join(',') : String(value));
     }
   });
 
   if (Platform.OS === 'web') {
     let blob = file?.file;
-    if (!(blob instanceof Blob)) {
-      if (!file?.uri) throw new Error('The selected file has no URI. Please choose it again.');
-      const response = await fetch(file.uri);
-      if (!response.ok) throw new Error('Unable to read the selected file in the browser.');
-      blob = await response.blob();
+    if (typeof File !== 'undefined' && blob instanceof File) {
+      form.append('file', blob, blob.name || file?.name || 'upload');
+    } else {
+      if (!(blob instanceof Blob)) {
+        if (!file?.uri) throw new Error('The selected file has no URI. Please choose it again.');
+        const response = await fetch(file.uri);
+        if (!response.ok) throw new Error('Unable to read the selected file in the browser.');
+        blob = await response.blob();
+      }
+      const mime = file?.mimeType || file?.type || blob.type || 'application/octet-stream';
+      form.append('file', blob, file?.name || 'upload');
     }
-    const mime = file?.mimeType || file?.type || blob.type || 'application/octet-stream';
-    if (typeof File !== 'undefined' && !(blob instanceof File)) {
-      blob = new File([blob], file?.name || 'upload', { type: mime });
-    }
-    form.append('file', blob, file?.name || 'upload');
   } else {
     form.append('file', {
       uri: file.uri,
@@ -140,19 +140,6 @@ const idOf = (value) => String(value?._id ?? value?.id ?? '');
 
 const listOf = (value) =>
   Array.isArray(value) ? value : value?.items || value?.data || [];
-
-const DEFAULT_TAXONOMY = [
-  { id: 'ssc', name: 'SSC', subcategories: [{ id: 'ssc-cgl', name: 'SSC CGL' }, { id: 'ssc-chsl', name: 'SSC CHSL' }, { id: 'ssc-cpo', name: 'SSC CPO' }, { id: 'ssc-mts', name: 'SSC MTS' }, { id: 'ssc-gd', name: 'SSC GD' }] },
-  { id: 'railway', name: 'Railway', subcategories: [{ id: 'rrb-ntpc', name: 'RRB NTPC' }, { id: 'rrb-group-d', name: 'RRB Group D' }, { id: 'rrb-alp', name: 'RRB ALP' }, { id: 'rrb-je', name: 'RRB JE' }] },
-  { id: 'banking', name: 'Banking', subcategories: [{ id: 'ibps-po', name: 'IBPS PO' }, { id: 'ibps-clerk', name: 'IBPS Clerk' }, { id: 'sbi-po', name: 'SBI PO' }, { id: 'sbi-clerk', name: 'SBI Clerk' }, { id: 'rbi', name: 'RBI' }] },
-  { id: 'upsc', name: 'UPSC', subcategories: [{ id: 'upsc-cse', name: 'UPSC CSE' }, { id: 'upsc-cds', name: 'UPSC CDS' }, { id: 'upsc-epfo', name: 'UPSC EPFO' }] },
-  { id: 'teaching', name: 'Teaching', subcategories: [{ id: 'ctet', name: 'CTET' }, { id: 'reet', name: 'REET' }, { id: 'tgt', name: 'TGT' }, { id: 'pgt', name: 'PGT' }] },
-  { id: 'defence', name: 'Defence', subcategories: [{ id: 'nda', name: 'NDA' }, { id: 'cds', name: 'CDS' }, { id: 'afcat', name: 'AFCAT' }, { id: 'agniveer', name: 'Agniveer' }] },
-  { id: 'state-exams', name: 'State Exams', subcategories: [{ id: 'state-psc', name: 'State PSC' }, { id: 'state-police', name: 'State Police' }, { id: 'state-teacher', name: 'State Teacher Exams' }] },
-  { id: 'general', name: 'General', subcategories: [{ id: 'general-english', name: 'General English' }, { id: 'competitive-english', name: 'Competitive English' }] },
-  { id: 'english-spoken', name: 'English Spoken', subcategories: [{ id: 'conversation', name: 'Conversation' }, { id: 'workplace', name: 'Workplace English' }, { id: 'interview', name: 'Interview English' }] },
-  { id: 'other', name: 'Other', subcategories: [{ id: 'other-english', name: 'Other English' }] },
-];
 
 export const api = {
   idOf,
@@ -337,25 +324,11 @@ export const api = {
       method: 'DELETE',
     }),
 
-  // Admin quizzes / taxonomy
-  adminTaxonomy: async () => {
-    try {
-      return await request('/admin/taxonomy');
-    } catch (e) {
-      if (!/404|not found|taxonomy/i.test(String(e?.message || e))) throw e;
-      return { categories: DEFAULT_TAXONOMY };
-    }
-  },
+  // Admin quizzes
+  adminTaxonomy: () => request('/admin/taxonomy'),
 
-  adminSubcategories: async (categoryId) => {
-    try {
-      return await request(`/admin/categories/${encodeURIComponent(categoryId)}/subcategories`);
-    } catch (e) {
-      if (!/404|not found|subcategor/i.test(String(e?.message || e))) throw e;
-      const group = DEFAULT_TAXONOMY.find((x) => String(x.id) === String(categoryId));
-      return { subcategories: group?.subcategories || [] };
-    }
-  },
+  adminSubcategories: (categoryId) =>
+    request(`/admin/categories/${encodeURIComponent(categoryId)}/subcategories`),
 
   quizzes: (params = {}) => {
     const q = new URLSearchParams();
@@ -387,60 +360,16 @@ export const api = {
       method: 'POST',
     }),
 
-  publishAllQuizzes: async () => {
-    try {
-      return await request('/admin/quizzes/publish-all', { method: 'POST' });
-    } catch (e) {
-      // Backward-compatible fallback for backends that do not yet expose
-      // the bulk publish endpoint. It still performs real publish API calls.
-      if (!/404|not found|publish-all/i.test(String(e?.message || e))) throw e;
-      const rows = listOf(await request('/admin/quizzes', { notifySuccess: false }));
-      const drafts = rows.filter((q) => !q?.is_published);
-      const eligible = drafts.filter((q) => {
-        const count = Array.isArray(q?.question_ids) ? q.question_ids.length : Number(q?.question_count || 0);
-        return count > 0;
-      });
-      const skipped = drafts.length - eligible.length;
-      const results = await Promise.allSettled(eligible.map((q) => api.publishQuiz(idOf(q))));
-      const published = results.filter((r) => r.status === 'fulfilled').length;
-      const failed = results
-        .map((r, i) => (r.status === 'rejected' ? { id: idOf(eligible[i]), error: r.reason?.message || String(r.reason) } : null))
-        .filter(Boolean);
-      return { published, skipped, failed, fallback: true };
-    }
-  },
+  publishAllQuizzes: () =>
+    request('/admin/quizzes/publish-all', {
+      method: 'POST',
+    }),
 
-  createManualQuiz: async (body) => {
-    try {
-      return await request('/admin/quizzes/manual', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-    } catch (e) {
-      // Build a manual quiz using the stable admin quiz/question endpoints
-      // available in the older backend as well.
-      if (!/404|not found|manual/i.test(String(e?.message || e))) throw e;
-      const quizPayload = { ...body };
-      const questions = Array.isArray(quizPayload.questions) ? quizPayload.questions : [];
-      delete quizPayload.questions;
-      const created = await request('/admin/quizzes', {
-        method: 'POST',
-        body: JSON.stringify({ ...quizPayload, is_published: false, question_ids: [] }),
-      });
-      const quizId = idOf(created);
-      if (!quizId) throw new Error('Quiz was created but no quiz id was returned.');
-      const ids = [];
-      for (const q of questions) {
-        const result = await request(`/admin/quizzes/${encodeURIComponent(quizId)}/questions/create`, {
-          method: 'POST',
-          body: JSON.stringify({ ...q, is_published: true }),
-        });
-        const qid = idOf(result?.question || result);
-        if (qid) ids.push(qid);
-      }
-      return { ...created, question_ids: ids, is_published: false };
-    }
-  },
+  createManualQuiz: (body) =>
+    request('/admin/quizzes/manual', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   unpublishQuiz: (id) =>
     request(`/admin/quizzes/${id}/unpublish`, {
@@ -775,6 +704,12 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+  saveQuizAttempt: (id, body) =>
+    request(`/quizzes/${id}/attempt/save`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+      notifySuccess: false,
+    }),
 
   quizResults: (id) =>
     request(`/quizzes/${id}/results`),
@@ -984,10 +919,19 @@ export const api = {
   },
 
   // Adaptive test
+  adaptiveCurrent: () => request('/adaptive/tests/current'),
+
   adaptiveTest: (body) =>
     request('/adaptive/tests', {
       method: 'POST',
       body: JSON.stringify(body),
+    }),
+
+  adaptiveSave: (body) =>
+    request('/adaptive/tests/save', {
+      method: 'POST',
+      body: JSON.stringify(body),
+      notifySuccess: false,
     }),
 
   adaptiveSubmit: (body) =>
@@ -1061,27 +1005,9 @@ export const api = {
   // ------------------------------------------------------------------
   profile: () => request('/profile', { notifySuccess: false, notifyError: false }),
   getStoredToken: () => AsyncStorage.getItem(TOKEN_KEY),
-  studentHome: async () => {
-    try {
-      return await request('/home');
-    } catch (e) {
-      if (!/404|not found/i.test(String(e?.message || e))) throw e;
-      return {};
-    }
-  },
+  studentHome: () => request('/home'),
   lessonView: (id) => request(`/lessons/${id}`),
-  quizBundle: async (id) => {
-    try {
-      return await request(`/quizzes/${id}/bundle`);
-    } catch (e) {
-      if (!/404|not found|bundle/i.test(String(e?.message || e))) throw e;
-      const [quiz, questions] = await Promise.all([
-        request(`/quizzes/${id}`),
-        request(`/quizzes/${id}/questions`),
-      ]);
-      return { quiz, questions: listOf(questions) };
-    }
-  },
+  quizBundle: (id) => request(`/quizzes/${id}/bundle`),
   learningSummary: () => request('/learning/summary'),
   certificateAccess: (id) => request(`/certificates/${encodeURIComponent(id)}/access`, { method: 'POST' }),
   previewCertificateUrl: (id) => `${BASE_URL}/certificates/${encodeURIComponent(id)}/preview`,
@@ -1105,8 +1031,6 @@ export const api = {
   studySearch: (q, limit = 8) => request(`/study-assistance/search?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(limit)}`),
 
   // Backward-compatible content APIs used by bulk/admin screens.
-  // Admin bulk content APIs. Keep these as explicit facade methods so the
-  // web bundle and the source screen cannot drift into calling undefined APIs.
   bulkQuiz: (body) => request('/admin/bulk/quiz', { method: 'POST', body: JSON.stringify(body) }),
   bulkQuizFile: (file, fields = {}) => uploadFile('/admin/bulk/quiz-file', file, fields),
   bulkCoursePdf: (file, fields = {}) => uploadFile('/admin/bulk/course-pdf', file, fields),

@@ -19,15 +19,14 @@ import AdminBulkContentScreen from '../screens/admin/AdminBulkContentScreen';
 import StudentNotesScreen from '../screens/student/StudentNotesScreen';
 import AIChatScreen from '../screens/student/AIChatScreen';
 import StudentHomeScreen from '../screens/student/StudentHomeScreen';
+import StudentCoursesScreen from '../screens/student/StudentCoursesScreen';
+import StudentQuizzesScreen from '../screens/student/StudentQuizzesScreen';
 import StudyMistakesScreen from '../screens/student/StudyMistakesScreen';
 import GamificationScreen from '../screens/student/GamificationScreen';
 import StudyAssistanceScreen from '../screens/student/StudyAssistanceScreen';
 import StudentCourseScreen from '../screens/student/StudentCourseScreen';
 import StudentLessonScreen from '../screens/student/StudentLessonScreen';
 import StudentQuizScreen from '../screens/student/StudentQuizScreen';
-import StudentCoursesScreen from '../screens/student/StudentCoursesScreen';
-import StudentQuizzesScreen from '../screens/student/StudentQuizzesScreen';
-import AdminTaxonomyScreen from '../screens/admin/AdminTaxonomyScreen';
 import StudentProgressScreen from '../screens/student/StudentProgressScreen';
 import StudentAnalyticsScreen from '../screens/student/StudentAnalyticsScreen';
 import LeaderboardScreen from '../screens/student/LeaderboardScreen';
@@ -145,8 +144,6 @@ export default function AppNavigator() {
       );
     } else if (route === 'questions') {
       page = <AdminQuestionsScreen />;
-    } else if (route === 'taxonomy') {
-      page = <AdminTaxonomyScreen />;
     } else if (route === 'quizzes') {
       page = <AdminQuizzesScreen onCreateManual={() => setRoute('manual-quiz')} />;
     } else if (route === 'manual-quiz') {
@@ -183,17 +180,9 @@ export default function AppNavigator() {
   // ============================================================
 
   if (route === 'courses') {
-    page = (
-      <StudentCoursesScreen
-        openCourse={(courseId) => setRoute(`course:${courseId}`)}
-      />
-    );
+    page = <StudentCoursesScreen openCourse={(courseId) => setRoute(`course:${courseId}`)} />;
   } else if (route === 'quizzes') {
-    page = (
-      <StudentQuizzesScreen
-        openQuiz={(quizId) => setRoute(`quiz:${quizId}`)}
-      />
-    );
+    page = <StudentQuizzesScreen openQuiz={(quizId) => setRoute(`quiz:${quizId}`)} />;
   } else if (route.startsWith('course:')) {
     const courseId = route.split(':')[1];
 

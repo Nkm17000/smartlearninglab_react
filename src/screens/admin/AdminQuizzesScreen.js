@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Text, View } from 'react-native';
+import { Alert, Platform, Text, View } from 'react-native';
 import {
   AppShell,
   Badge,
@@ -163,32 +163,26 @@ export default function AdminQuizzesScreen({ onCreateManual }) {
     }
   };
 
-  const removeQuiz = (quiz) => {
+  const removeQuiz = async (quiz) => {
     const id = api.idOf(quiz);
     if (!id) return;
-
-    Alert.alert(
-      'Delete quiz?',
-      `This will delete "${quiz.title || quiz.name || 'this quiz'}".`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            setBusyId(id);
-            try {
-              await api.deleteQuiz(id);
-              await load();
-            } catch (e) {
-              Alert.alert('Delete quiz', e?.message || 'Unable to delete quiz.');
-            } finally {
-              setBusyId('');
-            }
-          },
-        },
-      ]
-    );
+    const label = quiz.title || quiz.name || 'this quiz';
+    if (Platform.OS === 'web' && typeof window !== 'undefined') {
+      if (!window.confirm(`Delete "${label}"? This cannot be undone.`)) return;
+    } else {
+      const confirmed = await new Promise(resolve => Alert.alert('Delete quiz?', `This will delete "${label}".`, [{text:'Cancel',style:'cancel',onPress:()=>resolve(false)},{text:'Delete',style:'destructive',onPress:()=>resolve(true)}]));
+      if (!confirmed) return;
+    }
+    setBusyId(id);
+    try {
+      await api.deleteQuiz(id);
+      setItems(current => current.filter(item => api.idOf(item) !== id));
+      await load();
+    } catch (e) {
+      Alert.alert('Delete quiz', e?.message || 'Unable to delete quiz.');
+    } finally {
+      setBusyId('');
+    }
   };
 
   if (error) {

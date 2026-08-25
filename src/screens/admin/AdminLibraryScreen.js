@@ -1,8 +1,8 @@
 import React,{useEffect,useState} from 'react';
-import {Alert,Linking,Text,View} from 'react-native';
-import * as DocumentPicker from 'expo-document-picker';
+import {Alert,Linking,Platform,Text,View} from 'react-native';
 import {AppShell,Badge,Button,Card,DropdownSelect,Empty,ErrorState,Field,Header,Loading} from '../../components/UI';
 import {api} from '../../services/api';
+import {pickFile} from '../../services/filePicker';
 import {colors} from '../../theme';
 
 const CATEGORIES=['SSC','Banking','UPSC','English Spoken','Railway','Teaching','Defence','State Exams','Computer','General','Other'];
@@ -15,9 +15,9 @@ export default function AdminLibraryScreen({onBack}){
  const [file,setFile]=useState(null),[title,setTitle]=useState(''),[description,setDescription]=useState(''),[category,setCategory]=useState('General'),[type,setType]=useState('pdf'),[url,setUrl]=useState(''),[tags,setTags]=useState(''),[busy,setBusy]=useState(false);
  const load=()=>{setError('');api.adminLibrary().then(x=>setItems(api.listOf(x))).catch(e=>setError(e.message))};
  useEffect(load,[]);
- const pick=async()=>{const r=await DocumentPicker.getDocumentAsync({type:'*/*',copyToCacheDirectory:true});if(!r.canceled&&r.assets?.[0]){const f=r.assets[0];setFile(f);setTitle(title||f.name);setType(f.mimeType==='application/pdf'?'pdf':f.mimeType?.startsWith('video/')?'video':f.mimeType?.startsWith('audio/')?'audio':f.mimeType?.startsWith('image/')?'image':'document')}};
+ const pick=async()=>{const f=await pickFile({accept:'*/*'});if(f){setFile(f);setTitle(title||f.name);setType(f.mimeType==='application/pdf'?'pdf':f.mimeType?.startsWith('video/')?'video':f.mimeType?.startsWith('audio/')?'audio':f.mimeType?.startsWith('image/')?'image':'document')}};
  const save=async()=>{try{setBusy(true);let d;if(mode==='upload'){if(!file)throw new Error('Please choose a file.');d=await api.uploadLibraryFile(file,{title:title||file.name,description,category,tags})}else{if(!url.trim())throw new Error('Please enter a URL.');d=await api.addLibraryLink({title:title||url,description,category,tags:tags.split(',').map(x=>x.trim()).filter(Boolean),type,url})}setItems(x=>[d,...(x||[])]);setFile(null);setTitle('');setDescription('');setUrl('');setTags('');}catch(e){Alert.alert('Library',e.message)}finally{setBusy(false)}};
- const remove=async id=>{try{await api.deleteLibraryItem(id);setItems(x=>(x||[]).filter(i=>api.idOf(i)!==id))}catch(e){Alert.alert('Library',e.message)}};
+ const remove=async id=>{const ok=Platform.OS==='web'&&typeof window!=='undefined'?window.confirm('Delete this resource?'):await new Promise(resolve=>Alert.alert('Delete resource?', 'This cannot be undone.', [{text:'Cancel',style:'cancel',onPress:()=>resolve(false)},{text:'Delete',style:'destructive',onPress:()=>resolve(true)}]));if(!ok)return;try{await api.deleteLibraryItem(id);setItems(x=>(x||[]).filter(i=>api.idOf(i)!==id))}catch(e){Alert.alert('Library',e.message)}};
  if(error)return <AppShell><Header title="Learning Library" right={<Button title="← Dashboard" variant="secondary" onPress={onBack}/>} /><ErrorState title="Library could not load" message={error} onRetry={load}/></AppShell>;
  if(!items)return <AppShell><Header title="Learning Library"/><Loading label="Loading library…"/></AppShell>;
  return <AppShell><Header eyebrow="Admin content" title="Learning Library" subtitle="Upload useful PDFs, notes, current-affairs material, videos and other resources that students can access from one place." right={<Button title="← Dashboard" variant="secondary" onPress={onBack}/>}/>
