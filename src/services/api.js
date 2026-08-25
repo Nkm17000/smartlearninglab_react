@@ -1,9 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
 
-export const BASE_URL =
+export const BASE_URL = (
   process.env.EXPO_PUBLIC_API_BASE_URL ||
-  'http://127.0.0.1:8000/api/v1';
+  'https://smartlearninglab-526006260073.asia-south1.run.app/api/v1'
+).replace(/\/$/, '');
 
 const TOKEN_KEY = 'sll_token';
 const USER_KEY = 'sll_user';
@@ -139,6 +140,19 @@ const idOf = (value) => String(value?._id ?? value?.id ?? '');
 
 const listOf = (value) =>
   Array.isArray(value) ? value : value?.items || value?.data || [];
+
+const DEFAULT_TAXONOMY = [
+  { id: 'ssc', name: 'SSC', subcategories: [{ id: 'ssc-cgl', name: 'SSC CGL' }, { id: 'ssc-chsl', name: 'SSC CHSL' }, { id: 'ssc-cpo', name: 'SSC CPO' }, { id: 'ssc-mts', name: 'SSC MTS' }, { id: 'ssc-gd', name: 'SSC GD' }] },
+  { id: 'railway', name: 'Railway', subcategories: [{ id: 'rrb-ntpc', name: 'RRB NTPC' }, { id: 'rrb-group-d', name: 'RRB Group D' }, { id: 'rrb-alp', name: 'RRB ALP' }, { id: 'rrb-je', name: 'RRB JE' }] },
+  { id: 'banking', name: 'Banking', subcategories: [{ id: 'ibps-po', name: 'IBPS PO' }, { id: 'ibps-clerk', name: 'IBPS Clerk' }, { id: 'sbi-po', name: 'SBI PO' }, { id: 'sbi-clerk', name: 'SBI Clerk' }, { id: 'rbi', name: 'RBI' }] },
+  { id: 'upsc', name: 'UPSC', subcategories: [{ id: 'upsc-cse', name: 'UPSC CSE' }, { id: 'upsc-cds', name: 'UPSC CDS' }, { id: 'upsc-epfo', name: 'UPSC EPFO' }] },
+  { id: 'teaching', name: 'Teaching', subcategories: [{ id: 'ctet', name: 'CTET' }, { id: 'reet', name: 'REET' }, { id: 'tgt', name: 'TGT' }, { id: 'pgt', name: 'PGT' }] },
+  { id: 'defence', name: 'Defence', subcategories: [{ id: 'nda', name: 'NDA' }, { id: 'cds', name: 'CDS' }, { id: 'afcat', name: 'AFCAT' }, { id: 'agniveer', name: 'Agniveer' }] },
+  { id: 'state-exams', name: 'State Exams', subcategories: [{ id: 'state-psc', name: 'State PSC' }, { id: 'state-police', name: 'State Police' }, { id: 'state-teacher', name: 'State Teacher Exams' }] },
+  { id: 'general', name: 'General', subcategories: [{ id: 'general-english', name: 'General English' }, { id: 'competitive-english', name: 'Competitive English' }] },
+  { id: 'english-spoken', name: 'English Spoken', subcategories: [{ id: 'conversation', name: 'Conversation' }, { id: 'workplace', name: 'Workplace English' }, { id: 'interview', name: 'Interview English' }] },
+  { id: 'other', name: 'Other', subcategories: [{ id: 'other-english', name: 'Other English' }] },
+];
 
 export const api = {
   idOf,
@@ -323,11 +337,25 @@ export const api = {
       method: 'DELETE',
     }),
 
-  // Admin quizzes
-  adminTaxonomy: () => request('/admin/taxonomy'),
+  // Admin quizzes / taxonomy
+  adminTaxonomy: async () => {
+    try {
+      return await request('/admin/taxonomy');
+    } catch (e) {
+      if (!/404|not found|taxonomy/i.test(String(e?.message || e))) throw e;
+      return { categories: DEFAULT_TAXONOMY };
+    }
+  },
 
-  adminSubcategories: (categoryId) =>
-    request(`/admin/categories/${encodeURIComponent(categoryId)}/subcategories`),
+  adminSubcategories: async (categoryId) => {
+    try {
+      return await request(`/admin/categories/${encodeURIComponent(categoryId)}/subcategories`);
+    } catch (e) {
+      if (!/404|not found|subcategor/i.test(String(e?.message || e))) throw e;
+      const group = DEFAULT_TAXONOMY.find((x) => String(x.id) === String(categoryId));
+      return { subcategories: group?.subcategories || [] };
+    }
+  },
 
   quizzes: (params = {}) => {
     const q = new URLSearchParams();
@@ -359,16 +387,60 @@ export const api = {
       method: 'POST',
     }),
 
-  publishAllQuizzes: () =>
-    request('/admin/quizzes/publish-all', {
-      method: 'POST',
-    }),
+  publishAllQuizzes: async () => {
+    try {
+      return await request('/admin/quizzes/publish-all', { method: 'POST' });
+    } catch (e) {
+      // Backward-compatible fallback for backends that do not yet expose
+      // the bulk publish endpoint. It still performs real publish API calls.
+      if (!/404|not found|publish-all/i.test(String(e?.message || e))) throw e;
+      const rows = listOf(await request('/admin/quizzes', { notifySuccess: false }));
+      const drafts = rows.filter((q) => !q?.is_published);
+      const eligible = drafts.filter((q) => {
+        const count = Array.isArray(q?.question_ids) ? q.question_ids.length : Number(q?.question_count || 0);
+        return count > 0;
+      });
+      const skipped = drafts.length - eligible.length;
+      const results = await Promise.allSettled(eligible.map((q) => api.publishQuiz(idOf(q))));
+      const published = results.filter((r) => r.status === 'fulfilled').length;
+      const failed = results
+        .map((r, i) => (r.status === 'rejected' ? { id: idOf(eligible[i]), error: r.reason?.message || String(r.reason) } : null))
+        .filter(Boolean);
+      return { published, skipped, failed, fallback: true };
+    }
+  },
 
-  createManualQuiz: (body) =>
-    request('/admin/quizzes/manual', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    }),
+  createManualQuiz: async (body) => {
+    try {
+      return await request('/admin/quizzes/manual', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+    } catch (e) {
+      // Build a manual quiz using the stable admin quiz/question endpoints
+      // available in the older backend as well.
+      if (!/404|not found|manual/i.test(String(e?.message || e))) throw e;
+      const quizPayload = { ...body };
+      const questions = Array.isArray(quizPayload.questions) ? quizPayload.questions : [];
+      delete quizPayload.questions;
+      const created = await request('/admin/quizzes', {
+        method: 'POST',
+        body: JSON.stringify({ ...quizPayload, is_published: false, question_ids: [] }),
+      });
+      const quizId = idOf(created);
+      if (!quizId) throw new Error('Quiz was created but no quiz id was returned.');
+      const ids = [];
+      for (const q of questions) {
+        const result = await request(`/admin/quizzes/${encodeURIComponent(quizId)}/questions/create`, {
+          method: 'POST',
+          body: JSON.stringify({ ...q, is_published: true }),
+        });
+        const qid = idOf(result?.question || result);
+        if (qid) ids.push(qid);
+      }
+      return { ...created, question_ids: ids, is_published: false };
+    }
+  },
 
   unpublishQuiz: (id) =>
     request(`/admin/quizzes/${id}/unpublish`, {
@@ -989,9 +1061,27 @@ export const api = {
   // ------------------------------------------------------------------
   profile: () => request('/profile', { notifySuccess: false, notifyError: false }),
   getStoredToken: () => AsyncStorage.getItem(TOKEN_KEY),
-  studentHome: () => request('/home'),
+  studentHome: async () => {
+    try {
+      return await request('/home');
+    } catch (e) {
+      if (!/404|not found/i.test(String(e?.message || e))) throw e;
+      return {};
+    }
+  },
   lessonView: (id) => request(`/lessons/${id}`),
-  quizBundle: (id) => request(`/quizzes/${id}/bundle`),
+  quizBundle: async (id) => {
+    try {
+      return await request(`/quizzes/${id}/bundle`);
+    } catch (e) {
+      if (!/404|not found|bundle/i.test(String(e?.message || e))) throw e;
+      const [quiz, questions] = await Promise.all([
+        request(`/quizzes/${id}`),
+        request(`/quizzes/${id}/questions`),
+      ]);
+      return { quiz, questions: listOf(questions) };
+    }
+  },
   learningSummary: () => request('/learning/summary'),
   certificateAccess: (id) => request(`/certificates/${encodeURIComponent(id)}/access`, { method: 'POST' }),
   previewCertificateUrl: (id) => `${BASE_URL}/certificates/${encodeURIComponent(id)}/preview`,

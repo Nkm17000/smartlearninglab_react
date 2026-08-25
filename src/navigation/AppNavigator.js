@@ -25,6 +25,9 @@ import StudyAssistanceScreen from '../screens/student/StudyAssistanceScreen';
 import StudentCourseScreen from '../screens/student/StudentCourseScreen';
 import StudentLessonScreen from '../screens/student/StudentLessonScreen';
 import StudentQuizScreen from '../screens/student/StudentQuizScreen';
+import StudentCoursesScreen from '../screens/student/StudentCoursesScreen';
+import StudentQuizzesScreen from '../screens/student/StudentQuizzesScreen';
+import AdminTaxonomyScreen from '../screens/admin/AdminTaxonomyScreen';
 import StudentProgressScreen from '../screens/student/StudentProgressScreen';
 import StudentAnalyticsScreen from '../screens/student/StudentAnalyticsScreen';
 import LeaderboardScreen from '../screens/student/LeaderboardScreen';
@@ -142,6 +145,8 @@ export default function AppNavigator() {
       );
     } else if (route === 'questions') {
       page = <AdminQuestionsScreen />;
+    } else if (route === 'taxonomy') {
+      page = <AdminTaxonomyScreen />;
     } else if (route === 'quizzes') {
       page = <AdminQuizzesScreen onCreateManual={() => setRoute('manual-quiz')} />;
     } else if (route === 'manual-quiz') {
@@ -177,7 +182,19 @@ export default function AppNavigator() {
   // STUDENT
   // ============================================================
 
-  if (route.startsWith('course:')) {
+  if (route === 'courses') {
+    page = (
+      <StudentCoursesScreen
+        openCourse={(courseId) => setRoute(`course:${courseId}`)}
+      />
+    );
+  } else if (route === 'quizzes') {
+    page = (
+      <StudentQuizzesScreen
+        openQuiz={(quizId) => setRoute(`quiz:${quizId}`)}
+      />
+    );
+  } else if (route.startsWith('course:')) {
     const courseId = route.split(':')[1];
 
     page = (
