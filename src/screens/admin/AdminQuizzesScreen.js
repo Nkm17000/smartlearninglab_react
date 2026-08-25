@@ -136,39 +136,31 @@ export default function AdminQuizzesScreen({ onCreateManual }) {
   };
 
   const publishAll = async () => {
-    const draftCount = items.filter((quiz) => quiz.is_published !== true).length;
-    if (!draftCount) {
-      Alert.alert('Publish All', 'There are no draft quizzes to publish.');
-      return;
-    }
+    if (publishingAll) return;
 
-    Alert.alert(
-      'Publish all quizzes?',
-      `This will publish all eligible draft quizzes, not only the current search results. Empty or invalid quizzes will be skipped.`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Publish All',
-          onPress: async () => {
-            setPublishingAll(true);
-            try {
-              const result = await api.publishAllQuizzes();
-              const skipped = Number(result?.skipped_count || 0);
-              const published = Number(result?.published_count || 0);
-              Alert.alert(
-                'Publish All Complete',
-                `${published} quiz(es) published.${skipped ? ` ${skipped} skipped because they have no questions or missing questions.` : ''}`
-              );
-              await load();
-            } catch (e) {
-              Alert.alert('Publish All', e?.message || 'Unable to publish quizzes.');
-            } finally {
-              setPublishingAll(false);
-            }
-          },
-        },
-      ]
-    );
+    setPublishingAll(true);
+    try {
+      console.log('[AdminQuiz] Publish All: calling POST /admin/quizzes/publish-all');
+      const result = await api.publishAllQuizzes();
+      console.log('[AdminQuiz] Publish All response:', result);
+
+      const skipped = Number(result?.skipped_count || 0);
+      const published = Number(result?.published_count || 0);
+
+      Alert.alert(
+        'Publish All Complete',
+        `${published} quiz(es) published.${skipped ? ` ${skipped} skipped because they have no questions or missing questions.` : ''}`
+      );
+      await load();
+    } catch (e) {
+      console.error('[AdminQuiz] Publish All failed:', e);
+      Alert.alert(
+        'Publish All Failed',
+        e?.message || 'Unable to publish quizzes.'
+      );
+    } finally {
+      setPublishingAll(false);
+    }
   };
 
   const removeQuiz = (quiz) => {
@@ -224,12 +216,6 @@ export default function AdminQuizzesScreen({ onCreateManual }) {
       />
 
       <Card style={{ backgroundColor: colors.navy, borderColor: colors.navy }}>
-        
-        <Button
-          title={publishingAll ? "Publishing..." : "Publish All"}
-          onPress={handlePublishAll}
-          disabled={publishingAll}
-        />
         <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
           <Text style={{ fontSize: 32 }}>📝</Text>
           <View style={{ flex: 1 }}>
