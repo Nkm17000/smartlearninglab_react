@@ -1,6 +1,6 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
-import { notifyApp, emitSessionExpired } from './notifications';
+import { notifyApp } from './notifications';
 
 /*
  * ============================================================
@@ -14,7 +14,7 @@ import { notifyApp, emitSessionExpired } from './notifications';
  *   EXPO_PUBLIC_API_BASE_URL
  *
  * Example value:
- *   https://smartlearninglab-526006260073.asia-south1.run.app/api/v1
+ *   https://your-backend.example/api/v1
  *
  * Local development:
  *   Set EXPO_PUBLIC_API_BASE_URL in your local .env file.
@@ -45,32 +45,27 @@ const TOKEN_KEY = 'sll_token';
 const USER_KEY = 'sll_user';
 const OFFLINE_QUEUE_KEY = 'sll_offline_queue';
 
-// Student portal actions are intentionally quiet: no API success/failure toast.
-// Admin pages keep the existing API feedback behavior.
-let portalRole = 'unknown';
-
-export function setPortalRole(role) {
-  portalRole = String(role || 'unknown').toLowerCase();
-}
-
-function isStudentPortal() {
-  return portalRole === 'student';
-}
-
+let sessionRole = null;
 let sessionExpiryHandled = false;
+const sessionExpiryListeners = new Set();
+
+export function subscribeSessionExpired(listener) {
+  sessionExpiryListeners.add(listener);
+  return () => sessionExpiryListeners.delete(listener);
+}
 
 async function handleSessionExpired() {
   if (sessionExpiryHandled) return;
   sessionExpiryHandled = true;
-
-  try {
-    await clearStoredAuth();
-  } finally {
-    GET_CACHE.clear();
-    GET_INFLIGHT.clear();
-    emitSessionExpired();
-  }
+  sessionRole = null;
+  await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
+  GET_CACHE.clear();
+  GET_INFLIGHT.clear();
+  sessionExpiryListeners.forEach(listener => {
+    try { listener(); } catch (_) {}
+  });
 }
+
 
 /*
  * ============================================================
@@ -435,10 +430,12 @@ async function request(path, options = {}) {
   const isGet = method === 'GET';
 
   const notifySuccess =
-    options.notifySuccess !== false && !isGet && !isStudentPortal();
+    options.notifySuccess !== false && !isGet;
 
-  const notifyError =
-    options.notifyError !== false && !isStudentPortal();
+  const notifyError = options.notifyError !== false;
+  const silentStudent = sessionRole === 'student';
+  const effectiveNotifySuccess = notifySuccess && !silentStudent;
+  const effectiveNotifyError = notifyError && !silentStudent;
 
   const cleanOptions = { ...options };
 
@@ -504,7 +501,7 @@ async function request(path, options = {}) {
           : `Cannot reach backend at ${BASE_URL}. ${e?.message || ''
           }`;
 
-      if (notifyError) {
+      if (effectiveNotifyError) {
         notifyApp('error', msg, 5000);
       }
 
@@ -525,15 +522,7 @@ async function request(path, options = {}) {
 
     if (response.status === 401) {
       await handleSessionExpired();
-
-      if (!isStudentPortal()) {
-        notifyApp('error', 'Your session has expired. Please login again.', 5000);
-      }
-
-      const error = new Error('SESSION_EXPIRED');
-      error.code = 'SESSION_EXPIRED';
-      error.status = 401;
-      throw error;
+      throw new Error('SESSION_EXPIRED');
     }
 
     if (!response.ok) {
@@ -542,14 +531,11 @@ async function request(path, options = {}) {
         response.status
       );
 
-      if (notifyError) {
+      if (effectiveNotifyError) {
         notifyApp('error', m, 5000);
       }
 
-      const error = new Error(m);
-      error.status = response.status;
-      error.isApiError = true;
-      throw error;
+      throw new Error(m);
     }
 
     if (isGet) {
@@ -562,7 +548,7 @@ async function request(path, options = {}) {
       invalidateGetCache();
     }
 
-    if (notifySuccess) {
+    if (effectiveNotifySuccess) {
       notifyApp(
         'success',
         humanizeApiMessage(
@@ -722,47 +708,31 @@ async function upload(
       data = raw;
     }
 
-    if (response.status === 401) {
-      await handleSessionExpired();
-
-      if (!isStudentPortal()) {
-        notifyApp('error', 'Your session has expired. Please login again.', 5000);
-      }
-
-      const error = new Error('SESSION_EXPIRED');
-      error.code = 'SESSION_EXPIRED';
-      error.status = 401;
-      throw error;
-    }
-
     if (!response.ok) {
       const m = errorMessage(
         data,
         response.status
       );
 
-      if (!isStudentPortal()) {
-        notifyApp('error', m, 5000);
-      }
+      notifyApp(
+        'error',
+        m,
+        5000
+      );
 
-      const error = new Error(m);
-      error.status = response.status;
-      error.isApiError = true;
-      throw error;
+      throw new Error(m);
     }
 
     invalidateGetCache();
 
-    if (!isStudentPortal()) {
-      notifyApp(
-        'success',
-        humanizeApiMessage(
-          path,
-          'POST',
-          data
-        )
-      );
-    }
+    notifyApp(
+      'success',
+      humanizeApiMessage(
+        path,
+        'POST',
+        data
+      )
+    );
 
     return data;
   } catch (e) {
@@ -825,10 +795,9 @@ export async function setStoredAuth(
     token
   );
 
-  sessionExpiryHandled = false;
-
   if (user) {
-    setPortalRole(user.role || 'student');
+    sessionRole = user.role || null;
+    sessionExpiryHandled = false;
     await AsyncStorage.setItem(
       USER_KEY,
       JSON.stringify(user)
@@ -839,6 +808,8 @@ export async function setStoredAuth(
 }
 
 export async function clearStoredAuth() {
+  sessionRole = null;
+  sessionExpiryHandled = false;
   await AsyncStorage.multiRemove([
     TOKEN_KEY,
     USER_KEY,
@@ -876,13 +847,13 @@ export const api = {
       d.access_token
     );
 
+    sessionRole = d.user?.role || null;
+    sessionExpiryHandled = false;
+
     await AsyncStorage.setItem(
       USER_KEY,
       JSON.stringify(d.user)
     );
-
-    sessionExpiryHandled = false;
-    setPortalRole(d.user?.role || 'student');
 
     return d;
   },
@@ -890,7 +861,6 @@ export const api = {
   setStoredAuth,
 
   clearStoredAuth,
-  setPortalRole,
 
   getStoredToken: async () =>
     AsyncStorage.getItem(
@@ -958,9 +928,17 @@ export const api = {
     ),
 
   logout: async () => {
-    await clearStoredAuth();
+    sessionRole = null;
     sessionExpiryHandled = false;
-    setPortalRole('unknown');
+    await AsyncStorage.multiRemove([
+      TOKEN_KEY,
+      USER_KEY,
+    ]);
+
+    notifyApp(
+      'success',
+      'Logged out successfully.'
+    );
   },
 
   getStoredUser: async () => {
@@ -969,9 +947,9 @@ export const api = {
         USER_KEY
       );
 
-    return v
-      ? JSON.parse(v)
-      : null;
+    const user = v ? JSON.parse(v) : null;
+    sessionRole = user?.role || null;
+    return user;
   },
 
   get: p =>
@@ -1769,6 +1747,18 @@ export const api = {
     request(`/notes/${id}`, {
       method: 'DELETE',
     }),
+
+  /*
+   * ========================================================
+   * STUDY ASSISTANCE - NO AI API
+   * ========================================================
+   */
+
+  studyAssistance: () =>
+    request('/study-assistance', { notifySuccess: false }),
+
+  studySearch: (query, limit = 8) =>
+    request(`/study-assistance/search?q=${encodeURIComponent(query)}&limit=${limit}`, { notifySuccess: false }),
 
   /*
    * ========================================================

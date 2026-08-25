@@ -17,6 +17,8 @@ import AdminBulkContentScreen from '../screens/admin/AdminBulkContentScreen';
 
 import StudentNotesScreen from '../screens/student/StudentNotesScreen';
 import AIChatScreen from '../screens/student/AIChatScreen';
+import StudyAssistanceScreen from '../screens/student/StudyAssistanceScreen';
+import StudyMistakesScreen from '../screens/student/StudyMistakesScreen';
 import StudentHomeScreen from '../screens/student/StudentHomeScreen';
 import StudentCoursesScreen from '../screens/student/StudentCoursesScreen';
 import StudentCourseScreen from '../screens/student/StudentCourseScreen';
@@ -39,8 +41,7 @@ import CommunityScreen from '../screens/student/CommunityScreen';
 import StudentLibraryScreen from '../screens/student/StudentLibraryScreen';
 
 import ErrorBoundary from '../components/ErrorBoundary';
-import { api, setPortalRole } from '../services/api';
-import { subscribeSessionExpired } from '../services/notifications';
+import { api, subscribeSessionExpired } from '../services/api';
 import { colors } from '../theme';
 import HybridNavigation from './HybridNavigation';
 
@@ -58,45 +59,37 @@ export default function AppNavigator() {
 
   useEffect(() => {
     let mounted = true;
-
     const unsubscribe = subscribeSessionExpired(() => {
-      if (!mounted) return;
-      setPortalRole('unknown');
-      setUser(null);
-      setRoute('home');
+      if (mounted) {
+        setRoute('home');
+        setUser(null);
+      }
     });
 
     (async () => {
       try {
-        const storedUser = await api.getStoredUser();
+        const stored = await api.getStoredUser();
         if (!mounted) return;
-
-        if (!storedUser) {
-          setPortalRole('unknown');
+        if (!stored) {
           setUser(null);
           return;
         }
-
-        setPortalRole(storedUser.role || 'student');
-
-        // Validate the persisted JWT at startup. A 401 is handled centrally.
+        // Validate the persisted JWT once on app startup. A 401 clears the
+        // session centrally and triggers subscribeSessionExpired above.
         try {
-          const serverUser = await api.profile();
-          if (mounted) setUser(serverUser || storedUser);
-        } catch (error) {
-          if (error?.code === 'SESSION_EXPIRED') return;
-          // Keep the cached user if the backend is temporarily unreachable.
-          if (mounted) setUser(storedUser);
+          const fresh = await api.profile();
+          if (mounted) setUser(fresh?.user || fresh || stored);
+        } catch (e) {
+          if (e?.message === 'SESSION_EXPIRED') return;
+          // Keep the cached session during temporary backend/network outages.
+          if (mounted) setUser(stored);
         }
       } catch (_) {
         if (mounted) setUser(null);
       }
     })();
 
-    return () => {
-      mounted = false;
-      unsubscribe();
-    };
+    return () => { mounted = false; unsubscribe(); };
   }, []);
 
   if (user === undefined) {
@@ -112,7 +105,6 @@ export default function AppNavigator() {
       <ErrorBoundary>
         <LoginScreen
           onLoggedIn={(loggedInUser) => {
-            setPortalRole(loggedInUser?.role || 'student');
             setUser(loggedInUser);
             setRoute('home');
           }}
@@ -128,7 +120,6 @@ export default function AppNavigator() {
     try {
       await api.logout();
     } finally {
-      setPortalRole('unknown');
       setUser(null);
       setRoute('home');
     }
@@ -262,8 +253,26 @@ export default function AppNavigator() {
     page = <StudentLibraryScreen />;
   } else if (route === 'speaking') {
     page = <StudentSpeakingScreen />;
+  } else if (route === 'study-mistakes') {
+    page = <StudyMistakesScreen />;
+  } else if (route === 'study') {
+    page = (
+      <StudyAssistanceScreen
+        openCourse={(id) => setRoute(`course:${id}`)}
+        openLesson={(id, courseId) => setRoute(`lesson:${id}:${courseId || ''}`)}
+        openRoute={setRoute}
+      />
+    );
   } else if (route === 'ai') {
-    page = <AIChatScreen />;
+    // Backward-compatible alias: the old AI Tutor entry now opens the
+    // zero-cost Study Assistance portal and does not call an AI API.
+    page = (
+      <StudyAssistanceScreen
+        openCourse={(id) => setRoute(`course:${id}`)}
+        openLesson={(id, courseId) => setRoute(`lesson:${id}:${courseId || ''}`)}
+        openRoute={setRoute}
+      />
+    );
   } else {
     page = (
       <StudentHomeScreen

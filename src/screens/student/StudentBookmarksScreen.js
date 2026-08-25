@@ -8,7 +8,7 @@ export default function StudentBookmarksScreen(){
  const [items,setItems]=useState(null),[error,setError]=useState('');
  const load=async()=>{try{setError('');setItems(api.listOf(await api.bookmarks()))}catch(e){setError(e.message)}};
  useEffect(()=>{load()},[]);
- const remove=async id=>{try{await api.deleteBookmark(id);load()}catch(e){console.warn('[Student API] Bookmark:', e?.message || e)}};
+ const remove=async id=>{try{await api.deleteBookmark(id);load()}catch(e){Alert.alert('Bookmark',e.message)}};
  if(error)return <AppShell><Header title="Bookmarks"/><ErrorState title="Bookmarks could not load" message={error} onRetry={load}/></AppShell>;
  if(!items)return <AppShell><Loading label="Loading bookmarks…"/></AppShell>;
  return <AppShell><Header title="Bookmarks" subtitle="Save lessons and resources you want to revisit."/>

@@ -37,8 +37,8 @@ export default function StudentQuizScreen({quizId,onBack,backLabel="Back to Quiz
  const answered=useMemo(()=>Object.keys(answers).length,[answers]); const completion=questions.length?Math.round(answered/questions.length*100):0; const q=questions[current];
  if(error)return <AppShell><ErrorState title="Quiz could not load" message={error} onRetry={load}/></AppShell>;
  if(!quiz)return <AppShell><Loading label="Opening quiz…"/></AppShell>;
- const start=async()=>{if(attemptMeta && attemptMeta.can_start===false){Alert.alert('Quiz','Maximum attempts reached for this quiz.');return;}setBusy(true);try{const a=await api.startQuiz(quizId);setAttempt(a)}catch(e){console.warn('[Student API] Quiz:', e?.message || e)}finally{setBusy(false)}};
- const submit=async()=>{try{if(!attempt){Alert.alert('Quiz','Start the quiz first.');return}if(answered<questions.length){Alert.alert('Almost there',`Please answer all ${questions.length} questions before submitting.`);return}setBusy(true);const r=await api.submitQuiz(quizId,{attempt_id:attempt.attempt_id,answers});setResult(r)}catch(e){console.warn('[Student API] Quiz submit:', e?.message || e)}finally{setBusy(false)}};
+ const start=async()=>{if(attemptMeta && attemptMeta.can_start===false){Alert.alert('Quiz','Maximum attempts reached for this quiz.');return;}setBusy(true);try{const a=await api.startQuiz(quizId);setAttempt(a)}catch(e){Alert.alert('Quiz',e.message)}finally{setBusy(false)}};
+ const submit=async()=>{try{if(!attempt){Alert.alert('Quiz','Start the quiz first.');return}if(answered<questions.length){Alert.alert('Almost there',`Please answer all ${questions.length} questions before submitting.`);return}setBusy(true);const r=await api.submitQuiz(quizId,{attempt_id:attempt.attempt_id,answers});setResult(r)}catch(e){Alert.alert('Submit failed',e.message)}finally{setBusy(false)}};
  if(result){
   const details=Array.isArray(result.details)?result.details:[];
   const optionLabel=(d,v)=>{

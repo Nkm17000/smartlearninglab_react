@@ -6,7 +6,7 @@ import {colors} from '../../theme';
 export default function StudentSpeakingScreen(){
  const [target,setTarget]=useState('Tell me about yourself and your daily routine.');
  const [transcript,setTranscript]=useState(''); const [result,setResult]=useState(null); const [busy,setBusy]=useState(false);
- const evaluate=async()=>{if(!transcript.trim())return Alert.alert('Speaking practice','Enter what you said first.');setBusy(true);try{setResult(await api.evaluateSpeaking({target_text:target,transcript}));}catch(e){console.warn('[Student API] Speaking practice:', e?.message || e)}finally{setBusy(false)}};
+ const evaluate=async()=>{if(!transcript.trim())return Alert.alert('Speaking practice','Enter what you said first.');setBusy(true);try{setResult(await api.evaluateSpeaking({target_text:target,transcript}));}catch(e){Alert.alert('Speaking practice',e.message)}finally{setBusy(false)}};
  return <AppShell><Header eyebrow="Practice" title="AI Speaking Practice" subtitle="Practice an answer, then get instant feedback on fluency, grammar and vocabulary."/>
   <Card><Text style={{fontWeight:'900',fontSize:17,color:colors.navy,marginBottom:8}}>Prompt</Text><TextInput value={target} onChangeText={setTarget} multiline style={{borderWidth:1,borderColor:colors.border,borderRadius:12,padding:12,color:colors.text,minHeight:70,backgroundColor:'#fff'}}/>
   <Text style={{fontWeight:'900',fontSize:17,color:colors.navy,marginTop:18,marginBottom:8}}>Your answer / transcript</Text><TextInput value={transcript} onChangeText={setTranscript} multiline placeholder="Type what you said after speaking..." style={{borderWidth:1,borderColor:colors.border,borderRadius:12,padding:12,color:colors.text,minHeight:130,backgroundColor:'#fff'}}/>

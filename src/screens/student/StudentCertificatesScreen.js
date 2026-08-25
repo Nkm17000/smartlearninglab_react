@@ -1,5 +1,5 @@
 import React,{useEffect,useState} from 'react';
-import {Linking,Text,View} from 'react-native';
+import {Alert,Linking,Text,View} from 'react-native';
 import {AppShell,Badge,Button,Card,Empty,ErrorState,Header,Loading} from '../../components/UI';
 import {api} from '../../services/api';
 import {colors} from '../../theme';
@@ -10,8 +10,8 @@ export default function StudentCertificatesScreen(){
  useEffect(()=>{load()},[]);
 
  const issue=async courseId=>{
-   try{setBusy(courseId);await api.issueCertificate(courseId);await load();}
-   catch(e){console.warn('[Student API] Certificate:', e?.message || e)}
+   try{setBusy(courseId);await api.issueCertificate(courseId);await load();Alert.alert('Certificate','Certificate issued successfully.');}
+   catch(e){Alert.alert('Certificate',e.message)}
    finally{setBusy('')}
  };
 
@@ -25,7 +25,7 @@ export default function StudentCertificatesScreen(){
        : `/certificates/public/${encodeURIComponent(certificateId)}/download`;
      await Linking.openURL(`${base}${path}?token=${encodeURIComponent(access.preview_token)}`);
    }catch(e){
-     console.warn('[Student API] Certificate open:', e?.message || e);
+     Alert.alert('Certificate',`Unable to open certificate. ${e.message}`);
    }finally{setBusy('')}
  };
 
