@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Platform } from 'react-native';
 
 export const BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
@@ -68,6 +69,38 @@ async function request(path, options = {}) {
   }
 
   return data;
+}
+
+async function uploadFile(path, file, fields = {}) {
+  const form = new FormData();
+  Object.entries(fields).forEach(([key, value]) => {
+    if (value !== undefined && value !== null) {
+      form.append(key, Array.isArray(value) ? JSON.stringify(value) : String(value));
+    }
+  });
+
+  if (Platform.OS === 'web') {
+    let blob = file?.file;
+    if (!(blob instanceof Blob)) {
+      if (!file?.uri) throw new Error('The selected file has no URI. Please choose it again.');
+      const response = await fetch(file.uri);
+      if (!response.ok) throw new Error('Unable to read the selected file in the browser.');
+      blob = await response.blob();
+    }
+    const mime = file?.mimeType || file?.type || blob.type || 'application/octet-stream';
+    if (typeof File !== 'undefined' && !(blob instanceof File)) {
+      blob = new File([blob], file?.name || 'upload', { type: mime });
+    }
+    form.append('file', blob, file?.name || 'upload');
+  } else {
+    form.append('file', {
+      uri: file.uri,
+      name: file.name || 'upload',
+      type: file.mimeType || file.type || 'application/octet-stream',
+    });
+  }
+
+  return uploadRequest(path, form);
 }
 
 async function uploadRequest(path, formData) {
@@ -948,4 +981,64 @@ export const api = {
     request(`/community/posts/${id}/like`, {
       method: 'POST',
     }),
+
+  // ------------------------------------------------------------------
+  // Student compatibility APIs
+  // These methods are intentionally kept in the shared API facade so
+  // older/newer student screens can coexist with the admin API changes.
+  // ------------------------------------------------------------------
+  profile: () => request('/profile', { notifySuccess: false, notifyError: false }),
+  getStoredToken: () => AsyncStorage.getItem(TOKEN_KEY),
+  studentHome: () => request('/home'),
+  lessonView: (id) => request(`/lessons/${id}`),
+  quizBundle: (id) => request(`/quizzes/${id}/bundle`),
+  learningSummary: () => request('/learning/summary'),
+  certificateAccess: (id) => request(`/certificates/${encodeURIComponent(id)}/access`, { method: 'POST' }),
+  previewCertificateUrl: (id) => `${BASE_URL}/certificates/${encodeURIComponent(id)}/preview`,
+  downloadCertificateUrl: (id) => `${BASE_URL}/certificates/${encodeURIComponent(id)}/pdf`,
+  deleteFlashcard: (id) => request(`/flashcards/${id}`, { method: 'DELETE' }),
+  gamificationStart: (slug, body = {}) => request(`/gamification/games/${encodeURIComponent(slug)}/start`, { method: 'POST', body: JSON.stringify(body) }),
+  gamificationAnswer: (sessionId, body) => request(`/gamification/sessions/${encodeURIComponent(sessionId)}/answer`, { method: 'POST', body: JSON.stringify(body) }),
+  gamificationFinish: (sessionId) => request(`/gamification/sessions/${encodeURIComponent(sessionId)}/finish`, { method: 'POST' }),
+  analyticsSummary: async () => {
+    try {
+      return await request('/analytics/summary');
+    } catch (e) {
+      const [basic, advanced] = await Promise.all([
+        request('/analytics'),
+        request('/analytics/advanced'),
+      ]);
+      return { basic, advanced };
+    }
+  },
+  studyAssistance: () => request('/study-assistance'),
+  studySearch: (q, limit = 8) => request(`/study-assistance/search?q=${encodeURIComponent(q)}&limit=${encodeURIComponent(limit)}`),
+
+  // Backward-compatible content APIs used by bulk/admin screens.
+  bulkQuiz: (body) => request('/admin/bulk/quiz', { method: 'POST', body: JSON.stringify(body) }),
+  bulkQuizFile: (file, fields = {}) => uploadFile('/admin/bulk/quiz-file', file, fields),
+  bulkCoursePdf: (file, fields = {}) => uploadFile('/admin/bulk/course-pdf', file, fields),
+  publishModule: (id) => request(`/admin/modules/${id}/publish`, { method: 'POST' }),
+  unpublishModule: (id) => request(`/admin/modules/${id}/unpublish`, { method: 'POST' }),
+  publishLesson: (id) => request(`/admin/lessons/${id}/publish`, { method: 'POST' }),
+  unpublishLesson: (id) => request(`/admin/lessons/${id}/unpublish`, { method: 'POST' }),
+  deleteAdmin: (id) => request(`/admin/users/admins/${id}`, { method: 'DELETE' }),
+  resendRegistration: (email) => request('/auth/register/resend', { method: 'POST', body: JSON.stringify({ email }) }),
+  setStoredAuth: async (token, user = null) => {
+    if (!token || typeof token !== 'string') throw new Error('OAuth login did not return a valid access token.');
+    await AsyncStorage.setItem(TOKEN_KEY, token);
+    if (user) await AsyncStorage.setItem(USER_KEY, JSON.stringify(user));
+    return token;
+  },
+  clearStoredAuth: () => AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]),
+
+  // Admin taxonomy compatibility APIs.
+  createAdminCategory: (body) => request('/admin/categories', { method: 'POST', body: JSON.stringify(body) }),
+  updateAdminCategory: (id, body) => request(`/admin/categories/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteAdminCategory: (id) => request(`/admin/categories/${id}`, { method: 'DELETE' }),
+  createAdminSubcategory: (categoryId, body) => request(`/admin/categories/${categoryId}/subcategories`, { method: 'POST', body: JSON.stringify(body) }),
+  updateAdminSubcategory: (id, body) => request(`/admin/subcategories/${id}`, { method: 'PUT', body: JSON.stringify(body) }),
+  deleteAdminSubcategory: (id) => request(`/admin/subcategories/${id}`, { method: 'DELETE' }),
+  admins: () => request('/admin/users/admins'),
+  createAdmin: (body) => request('/admin/users/admins', { method: 'POST', body: JSON.stringify(body) }),
 };

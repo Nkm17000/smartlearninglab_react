@@ -19,6 +19,9 @@ import AdminBulkContentScreen from '../screens/admin/AdminBulkContentScreen';
 import StudentNotesScreen from '../screens/student/StudentNotesScreen';
 import AIChatScreen from '../screens/student/AIChatScreen';
 import StudentHomeScreen from '../screens/student/StudentHomeScreen';
+import StudyMistakesScreen from '../screens/student/StudyMistakesScreen';
+import GamificationScreen from '../screens/student/GamificationScreen';
+import StudyAssistanceScreen from '../screens/student/StudyAssistanceScreen';
 import StudentCourseScreen from '../screens/student/StudentCourseScreen';
 import StudentLessonScreen from '../screens/student/StudentLessonScreen';
 import StudentQuizScreen from '../screens/student/StudentQuizScreen';
@@ -232,8 +235,12 @@ export default function AppNavigator() {
         openAdaptive={() => setRoute('adaptive')}
       />
     );
-  } else if (route === 'adaptive') {
+  } else if (route === 'adaptive' || route === 'mock-test') {
     page = <AdaptiveTestScreen />;
+  } else if (route === 'study-mistakes') {
+    page = <StudyMistakesScreen />;
+  } else if (route === 'gamification') {
+    page = <GamificationScreen />;
   } else if (route === 'flashcards') {
     page = <FlashcardsScreen />;
   } else if (route === 'interview') {
@@ -258,6 +265,14 @@ export default function AppNavigator() {
     page = <StudentLibraryScreen />;
   } else if (route === 'speaking') {
     page = <StudentSpeakingScreen />;
+  } else if (route === 'study') {
+    page = (
+      <StudyAssistanceScreen
+        openCourse={(courseId) => setRoute(`course:${courseId}`)}
+        openLesson={(lessonId, courseId) => setRoute(`lesson:${lessonId}:${courseId || ''}`)}
+        openRoute={(nextRoute) => setRoute(nextRoute)}
+      />
+    );
   } else if (route === 'ai') {
     page = <AIChatScreen />;
   } else {

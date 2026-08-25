@@ -54,7 +54,29 @@ export default function StudentHomeScreen({user,openCourse,openQuiz,openRoute}){
  const {width}=useWindowDimensions();
  const wide=width>=1180;
  const [search,setSearch]=useState(''),[activeCategory,setActiveCategory]=useState(''),[activeExam,setActiveExam]=useState(''),[data,setData]=useState(null),[cats,setCats]=useState(null),[error,setError]=useState('');
- const load=async()=>{try{setError('');const h=await api.studentHome();const featured=api.listOf(h?.featured?.courses);const featuredQuizzes=api.listOf(h?.featured?.quizzes);const allQuizzes=api.listOf(h?.quizzes);setData({dashboard:h?.dashboard,featured,quizzes:featuredQuizzes.length?featuredQuizzes:allQuizzes});setCats(h?.catalog||null)}catch(e){setError(e?.message||'Unable to load your learning home.')}};
+ const load=async()=>{
+  try{
+    setError('');
+    let h;
+    try{
+      h=await api.studentHome();
+    }catch(primaryError){
+      // Backward-compatible fallback for older backend deployments.
+      const [d,c,f,q]=await Promise.all([
+        api.studentDashboard(),
+        api.catalogCategories(),
+        api.featuredCatalog(10),
+        api.studentQuizzes(),
+      ]);
+      h={dashboard:d,catalog:c,featured:f,quizzes:q};
+    }
+    const featured=api.listOf(h?.featured?.courses);
+    const featuredQuizzes=api.listOf(h?.featured?.quizzes);
+    const allQuizzes=api.listOf(h?.quizzes);
+    setData({dashboard:h?.dashboard,featured,quizzes:featuredQuizzes.length?featuredQuizzes:allQuizzes});
+    setCats(h?.catalog||null);
+  }catch(e){setError(e?.message||'Unable to load your learning home.')}
+ };
  useEffect(()=>{load()},[]);
  const searchCourses=async(category=activeCategory,exam=activeExam)=>{try{const query=[search,exam].filter(Boolean).join(' ');const c=await api.studentCourses({search:query,category,level:'',language:''});setData(x=>({...x,searchResults:api.listOf(c)}))}catch(e){setData(x=>({...x,searchResults:[]}));}};
  if(error)return <AppShell><ErrorState title="Learning data could not load" message={error} onRetry={load}/></AppShell>;
