@@ -1,30 +1,365 @@
-import React, {useEffect, useMemo, useState} from 'react';
-import {Alert, Text, View} from 'react-native';
-import {AppShell, Badge, Button, Card, DropdownSelect, Empty, ErrorState, Field, Header, Loading} from '../../components/UI';
-import {api} from '../../services/api';
-import {colors} from '../../theme';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Alert, Text, View } from 'react-native';
+import {
+  AppShell,
+  Badge,
+  Button,
+  Card,
+  Empty,
+  ErrorState,
+  Field,
+  Header,
+  Loading,
+} from '../../components/UI';
+import { api } from '../../services/api';
+import { colors } from '../../theme';
 
-const STATUS=['All','Published','Unpublished'];
-const TYPES=['All','Standalone','Course Quiz'];
-const QUESTION_STATE=['All','Ready','Empty'];
+export default function AdminQuizzesScreen({ onCreateManual }) {
+  const [items, setItems] = useState([]);
+  const [search, setSearch] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [busyId, setBusyId] = useState('');
+  const [publishingAll, setPublishingAll] = useState(false);
+  const [error, setError] = useState('');
 
-export default function AdminQuizzesScreen(){
-  const [items,setItems]=useState([]),[taxonomy,setTaxonomy]=useState([]),[search,setSearch]=useState(''),[category,setCategory]=useState('All'),[subcategory,setSubcategory]=useState('All'),[subject,setSubject]=useState('All'),[status,setStatus]=useState('All'),[type,setType]=useState('All'),[questionState,setQuestionState]=useState('All');
-  const [loading,setLoading]=useState(true),[busyId,setBusyId]=useState(''),[error,setError]=useState('');
-  const load=async()=>{setLoading(true);setError('');try{const [q,t]=await Promise.all([api.quizzes(),api.adminTaxonomy()]);setItems(api.listOf(q));setTaxonomy(t?.categories||[])}catch(e){setError(e?.message||'Unable to load quizzes.')}finally{setLoading(false)}};
-  useEffect(()=>{load()},[]);
-  const subOptions=useMemo(()=>category==='All'?taxonomy.flatMap(x=>x.subcategories||[]):(taxonomy.find(x=>x.name===category)?.subcategories||[]),[taxonomy,category]);
-  const subjects=useMemo(()=>Array.from(new Set(items.map(x=>x.subject).filter(Boolean))).sort(),[items]);
-  const filtered=useMemo(()=>{const q=search.trim().toLowerCase();return items.filter(quiz=>{const questions=Array.isArray(quiz.question_ids)?quiz.question_ids.length:Number(quiz.question_count||0);const standalone=!quiz.course_id;const cats=quiz.categories||[];const subs=quiz.subcategories||[];const text=[quiz.title,quiz.name,quiz.subject,quiz.description,quiz.exam,quiz.topic,...cats,...subs].filter(Boolean).join(' ').toLowerCase();return (!q||text.includes(q))&&(category==='All'||cats.some(x=>x===category))&&(subcategory==='All'||subs.includes(subcategory))&&(subject==='All'||String(quiz.subject||'Other')===subject)&&(status==='All'||(status==='Published'?quiz.is_published===true:quiz.is_published!==true))&&(type==='All'||(type==='Standalone'?standalone:!standalone))&&(questionState==='All'||(questionState==='Ready'?questions>0:questions===0))})},[items,search,category,subcategory,subject,status,type,questionState,taxonomy]);
-  const reset=()=>{setSearch('');setCategory('All');setSubcategory('All');setSubject('All');setStatus('All');setType('All');setQuestionState('All')};
-  const togglePublish=async quiz=>{const id=api.idOf(quiz);const published=quiz.is_published===true;const questions=Array.isArray(quiz.question_ids)?quiz.question_ids.length:Number(quiz.question_count||0);if(!published&&questions===0){Alert.alert('Cannot publish quiz','Add at least one question before publishing this quiz.');return}setBusyId(id);try{if(published)await api.unpublishQuiz(id);else await api.publishQuiz(id);await load()}catch(e){Alert.alert('Quiz status',e?.message||'Unable to update quiz status.')}finally{setBusyId('')}};
-  const removeQuiz=quiz=>{const id=api.idOf(quiz);Alert.alert('Delete quiz?',`This will delete "${quiz.title||quiz.name||'this quiz'}".`,[{text:'Cancel',style:'cancel'},{text:'Delete',style:'destructive',onPress:async()=>{setBusyId(id);try{await api.deleteQuiz(id);await load()}catch(e){Alert.alert('Delete quiz',e?.message||'Unable to delete quiz.')}finally{setBusyId('')}}}])};
-  if(error)return <AppShell><ErrorState title="Quizzes could not load" message={error} onRetry={load}/></AppShell>;
-  if(loading)return <AppShell><Loading label="Loading quizzes..."/></AppShell>;
-  return <AppShell><Header eyebrow="Test Series" title="Quiz Management" subtitle="Manage quizzes using linked categories and category-specific subcategories."/>
-    <Card style={{backgroundColor:colors.navy,borderColor:colors.navy}}><Text style={{color:'#fff',fontSize:20,fontWeight:'900'}}>Taxonomy-linked test series</Text><Text style={{color:'#E9EAF3',marginTop:4}}>Example: English → SSC → SSC CGL. A quiz can be linked to several category/subcategory pairs.</Text></Card>
-    <Card style={{backgroundColor:'#FBFBFE'}}><Text style={{fontSize:18,fontWeight:'900',color:colors.navy}}>Find a quiz</Text><Field label="Search" value={search} onChangeText={setSearch} placeholder="Search title, subject, category, subcategory..."/><View style={{flexDirection:'row',gap:10,flexWrap:'wrap'}}><View style={{flex:1,minWidth:180}}><DropdownSelect label="Category" value={category} onChange={v=>{setCategory(v);setSubcategory('All')}} options={[{value:'All',label:'All'},...taxonomy.map(x=>({value:x.name,label:x.name}))]}/></View><View style={{flex:1,minWidth:180}}><DropdownSelect label="Subcategory" value={subcategory} onChange={setSubcategory} options={[{value:'All',label:'All'},...subOptions.map(x=>({value:x.name,label:x.name}))]}/></View><View style={{flex:1,minWidth:180}}><DropdownSelect label="Subject" value={subject} onChange={setSubject} options={[{value:'All',label:'All'},...subjects.map(x=>({value:x,label:x}))]}/></View><View style={{flex:1,minWidth:180}}><DropdownSelect label="Publish status" value={status} onChange={setStatus} options={STATUS.map(x=>({value:x,label:x}))}/></View><View style={{flex:1,minWidth:180}}><DropdownSelect label="Quiz type" value={type} onChange={setType} options={TYPES.map(x=>({value:x,label:x}))}/></View><View style={{flex:1,minWidth:180}}><DropdownSelect label="Question readiness" value={questionState} onChange={setQuestionState} options={QUESTION_STATE.map(x=>({value:x,label:x}))}/></View></View><View style={{flexDirection:'row',gap:8}}><Button title="Reset filters" variant="secondary" onPress={reset}/><Button title="↻ Refresh" variant="secondary" onPress={load}/></View></Card>
-    <View style={{flexDirection:'row',gap:8,marginBottom:10,flexWrap:'wrap'}}><Badge tone="pink">TEST SERIES</Badge><Badge>{filtered.length} of {items.length}</Badge><Badge tone="green">{items.filter(x=>x.is_published).length} Published</Badge></View>
-    {filtered.length===0?<Empty title="No matching quizzes" message="Try another filter or reset the search."/>:filtered.map(quiz=>{const id=api.idOf(quiz),published=quiz.is_published===true,questions=Array.isArray(quiz.question_ids)?quiz.question_ids.length:Number(quiz.question_count||0),standalone=!quiz.course_id;return <Card key={id}><Text style={{fontSize:18,fontWeight:'900',color:colors.navy}}>{quiz.title||quiz.name||'Untitled Quiz'}</Text><Text style={{color:colors.muted,marginTop:4}}>{quiz.description||'No description'}</Text><View style={{flexDirection:'row',flexWrap:'wrap',gap:6,marginTop:9}}><Badge tone="purple">Subject: {quiz.subject||'Other'}</Badge>{(quiz.categories||[]).map(x=><Badge key={x} tone="pink">{x}</Badge>)}{(quiz.subcategories||[]).slice(0,8).map(x=><Badge key={x} tone="blue">{x}</Badge>)}<Badge tone={published?'green':'orange'}>{published?'Published':'Unpublished'}</Badge><Badge>{questions} questions</Badge><Badge>{quiz.duration_minutes||15} min</Badge><Badge>{standalone?'Standalone Test':'Course Quiz'}</Badge></View><View style={{flexDirection:'row',gap:8,flexWrap:'wrap',marginTop:14}}><Button title={busyId===id?'Updating...':published?'Unpublish':'Publish Quiz'} variant={published?'secondary':'success'} onPress={()=>togglePublish(quiz)} disabled={busyId===id}/><Button title="Delete" variant="danger" onPress={()=>removeQuiz(quiz)} disabled={busyId===id}/></View></Card>})}
-  </AppShell>;
+  const load = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const response = await api.quizzes();
+      setItems(api.listOf(response));
+    } catch (e) {
+      setError(e?.message || 'Unable to load quizzes.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const filtered = useMemo(() => {
+    const value = search.trim().toLowerCase();
+    if (!value) return items;
+
+    return items.filter((quiz) => {
+      const text = [
+        quiz.title,
+        quiz.name,
+        quiz.category,
+        quiz.description,
+        quiz.exam,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+
+      return text.includes(value);
+    });
+  }, [items, search]);
+
+  const togglePublish = async (quiz) => {
+    const id = api.idOf(quiz);
+    if (!id) return;
+
+    const isPublished = quiz.is_published === true;
+    const questionCount = Array.isArray(quiz.question_ids)
+      ? quiz.question_ids.length
+      : Number(quiz.question_count || 0);
+
+    if (!isPublished && questionCount === 0) {
+      Alert.alert(
+        'Cannot publish quiz',
+        'Add at least one question before publishing this quiz.'
+      );
+      return;
+    }
+
+    setBusyId(id);
+
+    try {
+      if (isPublished) {
+        await api.unpublishQuiz(id);
+      } else {
+        await api.publishQuiz(id);
+      }
+
+      await load();
+    } catch (e) {
+      Alert.alert(
+        isPublished ? 'Unpublish quiz' : 'Publish quiz',
+        e?.message || 'Unable to update quiz status.'
+      );
+    } finally {
+      setBusyId('');
+    }
+  };
+
+  const publishAll = async () => {
+    const draftCount = items.filter((quiz) => quiz.is_published !== true).length;
+    if (!draftCount) {
+      Alert.alert('Publish All', 'There are no draft quizzes to publish.');
+      return;
+    }
+
+    Alert.alert(
+      'Publish all quizzes?',
+      `This will publish all eligible draft quizzes, not only the current search results. Empty or invalid quizzes will be skipped.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Publish All',
+          onPress: async () => {
+            setPublishingAll(true);
+            try {
+              const result = await api.publishAllQuizzes();
+              const skipped = Number(result?.skipped_count || 0);
+              const published = Number(result?.published_count || 0);
+              Alert.alert(
+                'Publish All Complete',
+                `${published} quiz(es) published.${skipped ? ` ${skipped} skipped because they have no questions or missing questions.` : ''}`
+              );
+              await load();
+            } catch (e) {
+              Alert.alert('Publish All', e?.message || 'Unable to publish quizzes.');
+            } finally {
+              setPublishingAll(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const removeQuiz = (quiz) => {
+    const id = api.idOf(quiz);
+    if (!id) return;
+
+    Alert.alert(
+      'Delete quiz?',
+      `This will delete "${quiz.title || quiz.name || 'this quiz'}".`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            setBusyId(id);
+            try {
+              await api.deleteQuiz(id);
+              await load();
+            } catch (e) {
+              Alert.alert('Delete quiz', e?.message || 'Unable to delete quiz.');
+            } finally {
+              setBusyId('');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  if (error) {
+    return (
+      <AppShell>
+        <ErrorState title="Quizzes could not load" message={error} onRetry={load} />
+      </AppShell>
+    );
+  }
+
+  if (loading) {
+    return (
+      <AppShell>
+        <Loading label="Loading quizzes..." />
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell>
+      <Header
+        eyebrow="Test Series"
+        title="Quiz Management"
+        subtitle="Create, review and publish quizzes for students."
+      />
+
+      <Card style={{ backgroundColor: colors.navy, borderColor: colors.navy }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+          <Text style={{ fontSize: 32 }}>📝</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#fff', fontSize: 22, fontWeight: '900' }}>
+              Publish quizzes
+            </Text>
+            <Text style={{ color: '#CBD5E1', marginTop: 4 }}>
+              Published standalone quizzes appear in Test Series and on the student home page.
+            </Text>
+          </View>
+          <Badge tone="green">
+            {items.filter((x) => x.is_published).length} Published
+          </Badge>
+        </View>
+      </Card>
+
+      <Field
+        label="Search quizzes"
+        value={search}
+        onChangeText={setSearch}
+        placeholder="Search by title, category, exam..."
+      />
+
+      <View
+        style={{
+          flexDirection: 'row',
+          justifyContent: 'space-between',
+          alignItems: 'center',
+          marginBottom: 10,
+          gap: 10,
+        }}
+      >
+        <View style={{ flex: 1 }}>
+          <Text style={{ fontSize: 20, fontWeight: '900', color: colors.navy }}>
+            All quizzes
+          </Text>
+          <Text style={{ color: colors.muted, marginTop: 3 }}>
+            {filtered.length} quiz{filtered.length === 1 ? '' : 'zes'}
+          </Text>
+        </View>
+
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+          {onCreateManual && (
+            <Button title="+ Create Quiz Manually" onPress={onCreateManual} />
+          )}
+          <Button
+            title={publishingAll ? 'Publishing All...' : 'Publish All'}
+            onPress={publishAll}
+            disabled={publishingAll}
+          />
+          <Button title="↻ Refresh" variant="secondary" onPress={load} disabled={publishingAll} />
+        </View>
+      </View>
+
+      {filtered.length === 0 ? (
+        <Empty
+          title="No quizzes found"
+          message={
+            search
+              ? 'Try a different search.'
+              : 'Create a quiz manually or use Bulk Content / Course Builder.'
+          }
+        />
+      ) : (
+        filtered.map((quiz) => {
+          const id = api.idOf(quiz);
+          const published = quiz.is_published === true;
+          const questions = Array.isArray(quiz.question_ids)
+            ? quiz.question_ids.length
+            : Number(quiz.question_count || 0);
+          const standalone = !quiz.course_id;
+
+          return (
+            <Card key={id} style={{ backgroundColor: '#FAFCFF' }}>
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'flex-start',
+                  gap: 12,
+                }}
+              >
+                <Text style={{ fontSize: 28 }}>📝</Text>
+
+                <View style={{ flex: 1 }}>
+                  <Text
+                    style={{
+                      fontSize: 18,
+                      fontWeight: '900',
+                      color: colors.navy,
+                    }}
+                  >
+                    {quiz.title || quiz.name || 'Untitled Quiz'}
+                  </Text>
+
+                  <Text style={{ color: colors.muted, marginTop: 4 }}>
+                    {quiz.description || 'No description'}
+                  </Text>
+
+                  <View
+                    style={{
+                      flexDirection: 'row',
+                      flexWrap: 'wrap',
+                      gap: 6,
+                      marginTop: 9,
+                    }}
+                  >
+                    <Badge tone={published ? 'green' : 'orange'}>
+                      {published ? 'Published' : 'Draft'}
+                    </Badge>
+
+                    <Badge tone="purple">
+                      {quiz.category || 'General'}
+                    </Badge>
+
+                    <Badge>
+                      {questions} question{questions === 1 ? '' : 's'}
+                    </Badge>
+
+                    <Badge>
+                      {quiz.duration_minutes || 15} min
+                    </Badge>
+
+                    {standalone && <Badge tone="green">Standalone Test</Badge>}
+                    {!standalone && <Badge tone="purple">Course Quiz</Badge>}
+                  </View>
+                </View>
+              </View>
+
+              <View
+                style={{
+                  flexDirection: 'row',
+                  flexWrap: 'wrap',
+                  gap: 8,
+                  marginTop: 14,
+                }}
+              >
+                <Button
+                  title={
+                    busyId === id
+                      ? published
+                        ? 'Unpublishing...'
+                        : 'Publishing...'
+                      : published
+                        ? 'Unpublish'
+                        : 'Publish Quiz'
+                  }
+                  onPress={() => togglePublish(quiz)}
+                  disabled={busyId === id}
+                />
+
+                <Button
+                  title="Delete"
+                  variant="danger"
+                  onPress={() => removeQuiz(quiz)}
+                  disabled={busyId === id}
+                />
+              </View>
+
+              {!published && (
+                <Text
+                  style={{
+                    marginTop: 9,
+                    color: colors.muted,
+                    fontSize: 12,
+                  }}
+                >
+                  {questions === 0
+                    ? 'Add questions before publishing.'
+                    : 'This quiz is a draft. Publish it when it is ready for students.'}
+                </Text>
+              )}
+            </Card>
+          );
+        })
+      )}
+    </AppShell>
+  );
 }

@@ -8,24 +8,20 @@ import AdminCoursesScreen from '../screens/admin/AdminCoursesScreen';
 import AdminCourseBuilderScreen from '../screens/admin/AdminCourseBuilderScreen';
 import AdminQuestionsScreen from '../screens/admin/AdminQuestionsScreen';
 import AdminQuizzesScreen from '../screens/admin/AdminQuizzesScreen';
+import AdminManualQuizScreen from '../screens/admin/AdminManualQuizScreen';
 import AdminStudentsScreen from '../screens/admin/AdminStudentsScreen';
 import AdminAnalyticsScreen from '../screens/admin/AdminAnalyticsScreen';
 import AdminStaffScreen from '../screens/admin/AdminStaffScreen';
 import AdminAILabScreen from '../screens/admin/AdminAILabScreen';
 import AdminLibraryScreen from '../screens/admin/AdminLibraryScreen';
 import AdminBulkContentScreen from '../screens/admin/AdminBulkContentScreen';
-import AdminTaxonomyScreen from '../screens/admin/AdminTaxonomyScreen';
 
 import StudentNotesScreen from '../screens/student/StudentNotesScreen';
 import AIChatScreen from '../screens/student/AIChatScreen';
-import StudyAssistanceScreen from '../screens/student/StudyAssistanceScreen';
-import StudyMistakesScreen from '../screens/student/StudyMistakesScreen';
 import StudentHomeScreen from '../screens/student/StudentHomeScreen';
-import StudentCoursesScreen from '../screens/student/StudentCoursesScreen';
 import StudentCourseScreen from '../screens/student/StudentCourseScreen';
 import StudentLessonScreen from '../screens/student/StudentLessonScreen';
 import StudentQuizScreen from '../screens/student/StudentQuizScreen';
-import StudentQuizzesScreen from '../screens/student/StudentQuizzesScreen';
 import StudentProgressScreen from '../screens/student/StudentProgressScreen';
 import StudentAnalyticsScreen from '../screens/student/StudentAnalyticsScreen';
 import LeaderboardScreen from '../screens/student/LeaderboardScreen';
@@ -36,13 +32,12 @@ import StudentSpeakingScreen from '../screens/student/StudentSpeakingScreen';
 import PersonalizedLearningScreen from '../screens/student/PersonalizedLearningScreen';
 import AdaptiveTestScreen from '../screens/student/AdaptiveTestScreen';
 import FlashcardsScreen from '../screens/student/FlashcardsScreen';
-import GamificationScreen from '../screens/student/GamificationScreen';
 import InterviewPrepScreen from '../screens/student/InterviewPrepScreen';
 import CommunityScreen from '../screens/student/CommunityScreen';
 import StudentLibraryScreen from '../screens/student/StudentLibraryScreen';
 
 import ErrorBoundary from '../components/ErrorBoundary';
-import { api, subscribeSessionExpired } from '../services/api';
+import { api } from '../services/api';
 import { colors } from '../theme';
 import HybridNavigation from './HybridNavigation';
 
@@ -59,44 +54,25 @@ export default function AppNavigator() {
   const [route, setRoute] = useState('home');
 
   useEffect(() => {
-    let mounted = true;
-    const unsubscribe = subscribeSessionExpired(() => {
-      if (mounted) {
-        setRoute('home');
-        setUser(null);
-      }
-    });
-
-    (async () => {
-      try {
-        const stored = await api.getStoredUser();
-        if (!mounted) return;
-        if (!stored) {
-          setUser(null);
-          return;
-        }
-        // Validate the persisted JWT once on app startup. A 401 clears the
-        // session centrally and triggers subscribeSessionExpired above.
-        try {
-          const fresh = await api.profile();
-          if (mounted) setUser(fresh?.user || fresh || stored);
-        } catch (e) {
-          if (e?.message === 'SESSION_EXPIRED') return;
-          // Keep the cached session during temporary backend/network outages.
-          if (mounted) setUser(stored);
-        }
-      } catch (_) {
-        if (mounted) setUser(null);
-      }
-    })();
-
-    return () => { mounted = false; unsubscribe(); };
+    api
+      .getStoredUser()
+      .then(setUser)
+      .catch(() => setUser(null));
   }, []);
 
   if (user === undefined) {
     return (
-      <View style={{ flex: 1, backgroundColor: colors.background, alignItems: 'center', justifyContent: 'center' }}>
-        <Text style={{ fontWeight: '900', color: colors.navy }}>Loading Smart Learning Lab…</Text>
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: colors.background,
+          alignItems: 'center',
+          justifyContent: 'center',
+        }}
+      >
+        <Text style={{ fontWeight: '900', color: colors.navy }}>
+          Loading Smart Learning Lab...
+        </Text>
       </View>
     );
   }
@@ -128,18 +104,21 @@ export default function AppNavigator() {
 
   let page = null;
 
-  // ==========================================================
-  // ADMIN ROUTES
-  // ==========================================================
+  // ============================================================
+  // ADMIN
+  // ============================================================
   if (isAdmin) {
     if (route === 'home') {
       page = <AdminHomeScreen navigate={setRoute} />;
     } else if (route === 'courses') {
-      page = <AdminCoursesScreen openCourse={(id) => setRoute(`course:${id}`)} />;
-    } else if (route === 'quizzes') {
-      page = <AdminQuizzesScreen />;
+      page = (
+        <AdminCoursesScreen
+          openCourse={(courseId) => setRoute(`course:${courseId}`)}
+        />
+      );
     } else if (route.startsWith('course:')) {
       const courseId = route.split(':')[1];
+
       page = (
         <AdminCourseBuilderScreen
           courseId={courseId}
@@ -147,17 +126,27 @@ export default function AppNavigator() {
         />
       );
     } else if (route === 'bulk-content') {
-      page = <AdminBulkContentScreen onBack={() => setRoute('home')} />;
+      page = (
+        <AdminBulkContentScreen
+          onBack={() => setRoute('home')}
+        />
+      );
     } else if (route === 'library-admin') {
-      page = <AdminLibraryScreen onBack={() => setRoute('home')} />;
+      page = (
+        <AdminLibraryScreen
+          onBack={() => setRoute('home')}
+        />
+      );
     } else if (route === 'questions') {
       page = <AdminQuestionsScreen />;
+    } else if (route === 'quizzes') {
+      page = <AdminQuizzesScreen onCreateManual={() => setRoute('manual-quiz')} />;
+    } else if (route === 'manual-quiz') {
+      page = <AdminManualQuizScreen onBack={() => setRoute('quizzes')} />;
     } else if (route === 'students') {
       page = <AdminStudentsScreen />;
     } else if (route === 'ai-lab') {
       page = <AdminAILabScreen />;
-    } else if (route === 'taxonomy') {
-      page = <AdminTaxonomyScreen />;
     } else if (route === 'analytics') {
       page = <AdminAnalyticsScreen />;
     } else if (route === 'staff' && isRoot) {
@@ -168,78 +157,91 @@ export default function AppNavigator() {
 
     return (
       <ErrorBoundary>
-        <HybridNavigation route={route} setRoute={setRoute} logout={logout} admin root={isRoot}>
+        <HybridNavigation
+          route={route}
+          setRoute={setRoute}
+          logout={logout}
+          admin
+          root={isRoot}
+        >
           {page}
         </HybridNavigation>
       </ErrorBoundary>
     );
   }
 
-  // ==========================================================
-  // STUDENT ROUTES
-  // ==========================================================
-  if (route === 'courses') {
-    page = <StudentCoursesScreen openCourse={(id) => setRoute(`course:${id}`)} />;
-  } else if (route === 'quizzes') {
-    page = <StudentQuizzesScreen openQuiz={(id) => setRoute(`quiz:${id}`)} />;
-  } else if (route.startsWith('course:')) {
+  // ============================================================
+  // STUDENT
+  // ============================================================
+
+  if (route.startsWith('course:')) {
     const courseId = route.split(':')[1];
+
     page = (
       <StudentCourseScreen
         courseId={courseId}
-        onBack={() => setRoute('courses')}
-        openQuiz={(quizId) => setRoute(`quiz:${quizId}:${courseId}`)}
+        onBack={() => setRoute('home')}
+        openQuiz={(quizId) => setRoute(`quiz:${quizId}`)}
         openLesson={(lessonId, currentCourseId) => {
-          setRoute(`lesson:${lessonId}:${currentCourseId || courseId}`);
+          const activeCourseId = currentCourseId || courseId;
+          setRoute(`lesson:${lessonId}:${activeCourseId}`);
         }}
       />
     );
   } else if (route.startsWith('lesson:')) {
     const [, lessonId, courseId] = route.split(':');
+
     page = (
       <StudentLessonScreen
         lessonId={lessonId}
         courseId={courseId}
         onBack={() => setRoute(`course:${courseId}`)}
-        onOpenLesson={(nextLessonId, nextCourseId = courseId) => {
+        onNextLesson={(nextLessonId, nextCourseId) => {
+          const activeCourseId = nextCourseId || courseId;
+
           if (nextLessonId) {
-            setRoute(`lesson:${nextLessonId}:${nextCourseId}`);
+            setRoute(`lesson:${nextLessonId}:${activeCourseId}`);
+          } else {
+            setRoute(`course:${courseId}`);
           }
         }}
+        onPreviousLesson={(previousLessonId, previousCourseId) => {
+          const activeCourseId = previousCourseId || courseId;
+
+          if (previousLessonId) {
+            setRoute(`lesson:${previousLessonId}:${activeCourseId}`);
+          } else {
+            setRoute(`course:${courseId}`);
+          }
+        }}
+        openQuiz={(quizId) => setRoute(`quiz:${quizId}`)}
+        openAI={() => setRoute('ai')}
       />
     );
   } else if (route.startsWith('quiz:')) {
-    const [, quizId, parentCourseId] = route.split(':');
     page = (
       <StudentQuizScreen
-        quizId={quizId}
-        onBack={() => setRoute(parentCourseId ? `course:${parentCourseId}` : 'quizzes')}
-        backLabel={parentCourseId ? 'Back to Course' : 'Back to Quizzes'}
+        quizId={route.split(':')[1]}
+        onBack={() => setRoute('home')}
       />
     );
   } else if (route === 'plan') {
     page = (
       <PersonalizedLearningScreen
-        openCourse={(id) => setRoute(`course:${id}`)}
-        openAdaptive={() => setRoute('mock-test')}
+        openCourse={(courseId) => setRoute(`course:${courseId}`)}
+        openAdaptive={() => setRoute('adaptive')}
       />
     );
-  } else if (route === 'mock-test') {
+  } else if (route === 'adaptive') {
     page = <AdaptiveTestScreen />;
   } else if (route === 'flashcards') {
     page = <FlashcardsScreen />;
-  } else if (route === 'gamification') {
-    page = <GamificationScreen openRoute={setRoute} />;
   } else if (route === 'interview') {
     page = <InterviewPrepScreen />;
   } else if (route === 'community') {
     page = <CommunityScreen />;
   } else if (route === 'progress') {
-    page = <StudentProgressScreen
-      openCourse={(id) => setRoute(`course:${id}`)}
-      openQuiz={(id) => setRoute(`quiz:${id}`)}
-      openRoute={setRoute}
-    />;
+    page = <StudentProgressScreen />;
   } else if (route === 'analytics') {
     page = <StudentAnalyticsScreen />;
   } else if (route === 'bookmarks') {
@@ -256,41 +258,26 @@ export default function AppNavigator() {
     page = <StudentLibraryScreen />;
   } else if (route === 'speaking') {
     page = <StudentSpeakingScreen />;
-  } else if (route === 'study-mistakes') {
-    page = <StudyMistakesScreen />;
-  } else if (route === 'study') {
-    page = (
-      <StudyAssistanceScreen
-        openCourse={(id) => setRoute(`course:${id}`)}
-        openLesson={(id, courseId) => setRoute(`lesson:${id}:${courseId || ''}`)}
-        openRoute={setRoute}
-      />
-    );
   } else if (route === 'ai') {
-    // Backward-compatible alias: the old AI Tutor entry now opens the
-    // zero-cost Study Assistance portal and does not call an AI API.
-    page = (
-      <StudyAssistanceScreen
-        openCourse={(id) => setRoute(`course:${id}`)}
-        openLesson={(id, courseId) => setRoute(`lesson:${id}:${courseId || ''}`)}
-        openRoute={setRoute}
-      />
-    );
+    page = <AIChatScreen />;
   } else {
     page = (
       <StudentHomeScreen
         user={user}
         onLogout={logout}
-        openCourse={(id) => setRoute(`course:${id}`)}
-        openQuiz={(id) => setRoute(`quiz:${id}`)}
-        openRoute={(r) => setRoute(r)}
+        openCourse={(courseId) => setRoute(`course:${courseId}`)}
+        openQuiz={(quizId) => setRoute(`quiz:${quizId}`)}
       />
     );
   }
 
   return (
     <ErrorBoundary>
-      <HybridNavigation route={route} setRoute={setRoute} logout={logout}>
+      <HybridNavigation
+        route={route}
+        setRoute={setRoute}
+        logout={logout}
+      >
         {page}
       </HybridNavigation>
     </ErrorBoundary>

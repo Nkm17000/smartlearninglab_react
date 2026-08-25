@@ -1,517 +1,695 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Platform } from 'react-native';
-import { notifyApp } from './notifications';
 
-/*
- * ============================================================
- * BACKEND CONFIGURATION
- * ============================================================
- *
- * IMPORTANT:
- * Do NOT hard-code the backend URL here.
- *
- * Cloudflare Pages:
- *   EXPO_PUBLIC_API_BASE_URL
- *
- * Example value:
- *   https://your-backend.example/api/v1
- *
- * Local development:
- *   Set EXPO_PUBLIC_API_BASE_URL in your local .env file.
- *
- * The same code works for:
- *   - Local development
- *   - Cloudflare Pages
- *   - Mobile builds
- *   - Production
- */
-
-const configuredBaseUrl =
+export const BASE_URL =
   process.env.EXPO_PUBLIC_API_BASE_URL ||
-  process.env.EXPO_PUBLIC_API_URL ||
-  '';
-
-export const BASE_URL = configuredBaseUrl.replace(/\/$/, '');
-
-function ensureBaseUrl() {
-  if (!BASE_URL) {
-    throw new Error(
-      'Backend API URL is not configured. Set EXPO_PUBLIC_API_BASE_URL in the frontend build environment.'
-    );
-  }
-}
+  'http://127.0.0.1:8000/api/v1';
 
 const TOKEN_KEY = 'sll_token';
 const USER_KEY = 'sll_user';
 const OFFLINE_QUEUE_KEY = 'sll_offline_queue';
 
-let sessionRole = null;
-let sessionExpiryHandled = false;
-const sessionExpiryListeners = new Set();
-
-export function subscribeSessionExpired(listener) {
-  sessionExpiryListeners.add(listener);
-  return () => sessionExpiryListeners.delete(listener);
-}
-
-async function handleSessionExpired() {
-  if (sessionExpiryHandled) return;
-  sessionExpiryHandled = true;
-  sessionRole = null;
-  await AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]);
-  GET_CACHE.clear();
-  GET_INFLIGHT.clear();
-  sessionExpiryListeners.forEach(listener => {
-    try { listener(); } catch (_) {}
-  });
-}
-
-
-/*
- * ============================================================
- * CACHE
- * ============================================================
- */
-
-const GET_CACHE = new Map();
-const GET_INFLIGHT = new Map();
-
-function cacheTtlMs(path) {
-  const p = path.split('?')[0];
-
-  // Fast-changing user state
-  if (p === '/progress' || /^\/courses\/[^/]+\/progress$/.test(p)) {
-    return 15 * 1000;
-  }
-
-  if (p === '/notifications') {
-    return 15 * 1000;
-  }
-
-  if (p === '/dashboard') {
-    return 30 * 1000;
-  }
-
-  if (p === '/home') {
-    return 30 * 1000;
-  }
-
-  if (p === '/results' || /^\/quizzes\/[^/]+\/results$/.test(p)) {
-    return 30 * 1000;
-  }
-
-  if (p === '/bookmarks') {
-    return 30 * 1000;
-  }
-
-  if (/^\/ai\/conversations\/[^/]+\/messages$/.test(p)) {
-    return 30 * 1000;
-  }
-
-  if (p === '/ai/conversations') {
-    return 30 * 1000;
-  }
-
-  // Medium-lived learning data
-  if (p === '/courses') {
-    return 60 * 1000;
-  }
-
-  if (/^\/courses\/[^/]+\/overview$/.test(p)) {
-    return 5 * 60 * 1000;
-  }
-
-  if (/^\/courses\/[^/]+$/.test(p)) {
-    return 5 * 60 * 1000;
-  }
-
-  if (p === '/quizzes' || p === '/questions') {
-    return 60 * 1000;
-  }
-
-  if (/^\/quizzes\/[^/]+\/questions$/.test(p)) {
-    return 5 * 60 * 1000;
-  }
-
-  if (p === '/flashcards' || p === '/flashcards/due') {
-    return 60 * 1000;
-  }
-
-  if (p === '/analytics') {
-    return 60 * 1000;
-  }
-
-  if (p === '/analytics/advanced') {
-    return 5 * 60 * 1000;
-  }
-
-  if (p === '/leaderboard') {
-    return 2 * 60 * 1000;
-  }
-
-  if (p === '/certificates' || p === '/badges') {
-    return 5 * 60 * 1000;
-  }
-
-  if (p === '/notes') {
-    return 30 * 1000;
-  }
-
-  if (p === '/enrollments') {
-    return 60 * 1000;
-  }
-
-  if (p === '/catalog/categories') {
-    return 15 * 60 * 1000;
-  }
-
-  if (p === '/catalog/featured') {
-    return 5 * 60 * 1000;
-  }
-
-  if (p === '/library/categories') {
-    return 15 * 60 * 1000;
-  }
-
-  if (p === '/library') {
-    return 5 * 60 * 1000;
-  }
-
-  if (p === '/community/posts') {
-    return 30 * 1000;
-  }
-
-  if (/^\/community\/posts\/[^/]+\/comments$/.test(p)) {
-    return 30 * 1000;
-  }
-
-  if (p === '/interview/topics') {
-    return 60 * 60 * 1000;
-  }
-
-  if (p === '/personalized/path') {
-    return 2 * 60 * 1000;
-  }
-
-  if (p === '/profile' || p === '/auth/me') {
-    return 60 * 1000;
-  }
-
-  if (/^\/lessons\/[^/]+$/.test(p)) {
-    return 60 * 1000;
-  }
-
-  if (/^\/quizzes\/[^/]+\/bundle$/.test(p)) {
-    return 60 * 1000;
-  }
-
-  if (p === '/learning/summary') {
-    return 30 * 1000;
-  }
-
-  if (p === '/analytics/summary') {
-    return 60 * 1000;
-  }
-
-  // Safe default
-  return 15 * 1000;
-}
-
-function invalidateGetCache() {
-  GET_CACHE.clear();
-}
-
-/*
- * ============================================================
- * API MESSAGES
- * ============================================================
- */
-
-function humanizeApiMessage(path, method, data) {
-  const p = path.split('?')[0];
-
-  const exact = [
-    [
-      /^\/auth\/register$/,
-      'Registration request created successfully. Please confirm your email to complete registration.',
-    ],
-    [/^\/auth\/login$/, 'Login successful.'],
-    [
-      /^\/auth\/forgot-password$/,
-      'Password reset email sent successfully.',
-    ],
-    [/^\/auth\/reset-password$/, 'Password reset successfully.'],
-    [
-      /^\/auth\/register\/resend$/,
-      'Confirmation email sent successfully.',
-    ],
-    [
-      /^\/auth\/verify-email\/request$/,
-      'Verification email sent successfully.',
-    ],
-    [/^\/auth\/verify-email$/, 'Email verified successfully.'],
-    [
-      /^\/courses\/[^/]+\/enroll$/,
-      'Course enrollment completed successfully.',
-    ],
-    [
-      /^\/lessons\/[^/]+\/complete$/,
-      'Lesson completed successfully.',
-    ],
-    [/^\/quizzes\/[^/]+\/start$/, 'Quiz started successfully.'],
-    [/^\/quizzes\/[^/]+\/submit$/, 'Quiz submitted successfully.'],
-    [/^\/adaptive\/tests$/, 'Mock test started successfully.'],
-    [
-      /^\/adaptive\/tests\/submit$/,
-      'Mock test submitted successfully.',
-    ],
-    [
-      /^\/certificates\/course\/[^/]+\/issue$/,
-      'Certificate generated successfully.',
-    ],
-    [/^\/notes$/, 'Note saved successfully.'],
-    [/^\/flashcards$/, 'Flashcard saved successfully.'],
-    [
-      /^\/flashcards\/[^/]+\/review$/,
-      'Flashcard review saved successfully.',
-    ],
-    [/^\/bookmarks$/, 'Bookmark saved successfully.'],
-    [
-      /^\/courses\/[^/]+\/reviews$/,
-      'Review submitted successfully.',
-    ],
-    [/^\/community\/posts$/, 'Post published successfully.'],
-    [
-      /^\/community\/posts\/[^/]+\/comments$/,
-      'Comment added successfully.',
-    ],
-    [
-      /^\/community\/posts\/[^/]+\/like$/,
-      'Like updated successfully.',
-    ],
-    [/^\/device-tokens$/, 'Device registered successfully.'],
-    [
-      /^\/offline\/sync$/,
-      'Offline learning actions synced successfully.',
-    ],
-    [
-      /^\/ai\/tutor\/rag$/,
-      'AI Tutor response generated successfully.',
-    ],
-    [
-      /^\/ai\/speaking\/evaluate$/,
-      'Speaking evaluation completed successfully.',
-    ],
-    [
-      /^\/ai\/mock-interview$/,
-      'Mock interview generated successfully.',
-    ],
-    [
-      /^\/ai\/mock-interview\/evaluate$/,
-      'Interview evaluation completed successfully.',
-    ],
-    [
-      /^\/ai\/personalized-quiz$/,
-      'Personalized quiz generated successfully.',
-    ],
-    [
-      /^\/ai\/study-plan$/,
-      'Study plan generated successfully.',
-    ],
-    [
-      /^\/admin\/ai\/course-from-pdf$/,
-      'PDF course generated successfully.',
-    ],
-    [
-      /^\/admin\/ai\/course-from-pdf\/save$/,
-      'PDF course saved successfully.',
-    ],
-    [
-      /^\/admin\/ai\/generate-course$/,
-      'AI course generated successfully.',
-    ],
-    [
-      /^\/admin\/ai\/generate-course\/save$/,
-      'AI course saved successfully.',
-    ],
-    [
-      /^\/admin\/ai\/generate-quiz$/,
-      'AI quiz generated successfully.',
-    ],
-    [
-      /^\/admin\/ai\/generate-quiz\/save$/,
-      'AI quiz saved successfully.',
-    ],
-    [
-      /^\/admin\/courses\/[^/]+\/publish$/,
-      'Course published successfully.',
-    ],
-    [
-      /^\/admin\/courses\/[^/]+\/unpublish$/,
-      'Course unpublished successfully.',
-    ],
-    [
-      /^\/admin\/quizzes\/[^/]+\/publish$/,
-      'Quiz published successfully.',
-    ],
-    [
-      /^\/admin\/quizzes\/[^/]+\/unpublish$/,
-      'Quiz unpublished successfully.',
-    ],
-    [/^\/admin\/courses$/, 'Course created successfully.'],
-    [/^\/admin\/quizzes$/, 'Quiz created successfully.'],
-    [/^\/admin\/questions$/, 'Question saved successfully.'],
-    [
-      /^\/admin\/users\/admins$/,
-      'Admin user saved successfully.',
-    ],
-    [
-      /^\/admin\/students\/[^/]+\/status$/,
-      'Student status updated successfully.',
-    ],
-  ];
-
-  for (const [re, msg] of exact) {
-    if (re.test(p)) {
-      return msg;
-    }
-  }
-
-  if (method === 'DELETE') {
-    return 'Deleted successfully.';
-  }
-
-  if (method === 'PUT' || method === 'PATCH') {
-    return 'Updated successfully.';
-  }
-
-  if (method === 'POST') {
-    return data?.message || 'Operation completed successfully.';
-  }
-
-  return data?.message || 'Operation completed successfully.';
-}
-
-function errorMessage(data, status) {
-  let m =
-    data?.detail ||
-    data?.message ||
-    (typeof data === 'string'
-      ? data
-      : `Request failed (${status})`);
-
-  if (Array.isArray(m)) {
-    m = m.map(x => x?.msg || String(x)).join(', ');
-  }
-
-  if (status === 409 && /email/i.test(String(m))) {
-    return (
-      String(m) ||
-      'Email already exists. Please login or use another email.'
-    );
-  }
-
-  return String(m);
-}
-
-/*
- * ============================================================
- * REQUEST
- * ============================================================
- */
-
 async function request(path, options = {}) {
-  ensureBaseUrl();
-
   const token = await AsyncStorage.getItem(TOKEN_KEY);
 
-  const method = String(options.method || 'GET').toUpperCase();
+  const headers = {
+    Accept: 'application/json',
+    ...(options.body !== undefined
+      ? { 'Content-Type': 'application/json' }
+      : {}),
+    ...(options.headers || {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
 
-  const isGet = method === 'GET';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 20000);
 
-  const notifySuccess =
-    options.notifySuccess !== false && !isGet;
+  let response;
 
-  const notifyError = options.notifyError !== false;
-  const silentStudent = sessionRole === 'student';
-  const effectiveNotifySuccess = notifySuccess && !silentStudent;
-  const effectiveNotifyError = notifyError && !silentStudent;
-
-  const cleanOptions = { ...options };
-
-  delete cleanOptions.notifySuccess;
-  delete cleanOptions.notifyError;
-
-  const cacheKey = isGet
-    ? `${token ? token.slice(-16) : 'anon'}:${path}`
-    : null;
-
-  if (isGet) {
-    const hit = GET_CACHE.get(cacheKey);
-
-    if (hit && hit.expiresAt > Date.now()) {
-      return hit.data;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('Backend request timed out. Check FastAPI.');
     }
 
-    if (hit) {
-      GET_CACHE.delete(cacheKey);
-    }
-
-    const pending = GET_INFLIGHT.get(cacheKey);
-
-    if (pending) {
-      return pending;
-    }
+    throw new Error(
+      `Cannot reach backend at ${BASE_URL}. ${error?.message || ''}`
+    );
+  } finally {
+    clearTimeout(timeout);
   }
 
-  const execute = async () => {
-    const headers = {
-      Accept: 'application/json',
-      ...(cleanOptions.body !== undefined
-        ? { 'Content-Type': 'application/json' }
-        : {}),
-      ...(cleanOptions.headers || {}),
-      ...(token
-        ? { Authorization: `Bearer ${token}` }
-        : {}),
-    };
+  const raw = await response.text();
+  let data = null;
 
-    const controller = new AbortController();
+  try {
+    data = raw ? JSON.parse(raw) : null;
+  } catch {
+    data = raw;
+  }
 
-    const timeout = setTimeout(
-      () => controller.abort(),
-      20000
-    );
+  if (!response.ok) {
+    let message =
+      data?.detail ||
+      data?.message ||
+      (typeof data === 'string'
+        ? data
+        : `Request failed (${response.status})`);
 
-    let response;
-
-    try {
-      response = await fetch(
-        `${BASE_URL}${path}`,
-        {
-          ...cleanOptions,
-          headers,
-          signal: controller.signal,
-        }
-      );
-    } catch (e) {
-      const msg =
-        e?.name === 'AbortError'
-          ? 'Backend request timed out. Check FastAPI.'
-          : `Cannot reach backend at ${BASE_URL}. ${e?.message || ''
-          }`;
-
-      if (effectiveNotifyError) {
-        notifyApp('error', msg, 5000);
-      }
-
-      throw new Error(msg);
-    } finally {
-      clearTimeout(timeout);
+    if (Array.isArray(message)) {
+      message = message.map((item) => item.msg || String(item)).join(', ');
     }
 
-    const raw = await response.text();
+    throw new Error(message);
+  }
 
+  return data;
+}
+
+const idOf = (value) => String(value?._id ?? value?.id ?? '');
+
+const listOf = (value) =>
+  Array.isArray(value) ? value : value?.items || value?.data || [];
+
+export const api = {
+  idOf,
+  listOf,
+
+  // Authentication
+  login: async (email, password) => {
+    const data = await request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (data?.access_token) {
+      await AsyncStorage.setItem(TOKEN_KEY, data.access_token);
+    }
+
+    if (data?.user) {
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    }
+
+    return data;
+  },
+
+  register: async (payload) => {
+    const data = await request('/auth/register', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+
+    if (data?.access_token) {
+      await AsyncStorage.setItem(TOKEN_KEY, data.access_token);
+    }
+
+    if (data?.user) {
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(data.user));
+    }
+
+    return data;
+  },
+
+  forgotPassword: (email) =>
+    request('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    }),
+
+  resetPassword: (token, password) =>
+    request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    }),
+
+  logout: () => AsyncStorage.multiRemove([TOKEN_KEY, USER_KEY]),
+
+  getStoredUser: async () => {
+    const value = await AsyncStorage.getItem(USER_KEY);
+    return value ? JSON.parse(value) : null;
+  },
+
+  // Generic HTTP
+  get: (path) => request(path),
+
+  post: (path, body) =>
+    request(path, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  put: (path, body) =>
+    request(path, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  del: (path) =>
+    request(path, {
+      method: 'DELETE',
+    }),
+
+  // Admin dashboard / courses
+  adminDashboard: () => request('/admin/dashboard'),
+
+  courses: () => request('/admin/courses'),
+
+  course: (id) => request(`/admin/courses/${id}`),
+
+  createCourse: (body) =>
+    request('/admin/courses', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateCourse: (id, body) =>
+    request(`/admin/courses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  deleteCourse: (id) =>
+    request(`/admin/courses/${id}`, {
+      method: 'DELETE',
+    }),
+
+  publishCourse: (id) =>
+    request(`/admin/courses/${id}/publish`, {
+      method: 'POST',
+    }),
+
+  unpublishCourse: (id) =>
+    request(`/admin/courses/${id}/unpublish`, {
+      method: 'POST',
+    }),
+
+  // Modules
+  modules: (courseId) =>
+    request(`/admin/courses/${courseId}/modules`),
+
+  createModule: (courseId, body) =>
+    request(`/admin/courses/${courseId}/modules`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateModule: (id, body) =>
+    request(`/admin/modules/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  deleteModule: (id) =>
+    request(`/admin/modules/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Lessons
+  lessons: (moduleId) =>
+    request(`/admin/modules/${moduleId}/lessons`),
+
+  createLesson: (moduleId, body) =>
+    request(`/admin/modules/${moduleId}/lessons`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateLesson: (id, body) =>
+    request(`/admin/lessons/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  deleteLesson: (id) =>
+    request(`/admin/lessons/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Questions
+  questions: (params = {}) => {
+    const query = new URLSearchParams();
+
+    if (params.search) query.set('search', params.search);
+    if (params.difficulty) query.set('difficulty', params.difficulty);
+
+    return request(
+      `/admin/questions${query.toString() ? `?${query.toString()}` : ''}`
+    );
+  },
+
+  createQuestion: (body) =>
+    request('/admin/questions', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateQuestion: (id, body) =>
+    request(`/admin/questions/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  deleteQuestion: (id) =>
+    request(`/admin/questions/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Admin quizzes
+  quizzes: () => request('/admin/quizzes'),
+
+  quiz: (id) => request(`/admin/quizzes/${id}`),
+
+  createQuiz: (body) =>
+    request('/admin/quizzes', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateQuiz: (id, body) =>
+    request(`/admin/quizzes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  deleteQuiz: (id) =>
+    request(`/admin/quizzes/${id}`, {
+      method: 'DELETE',
+    }),
+
+  publishQuiz: (id) =>
+    request(`/admin/quizzes/${id}/publish`, {
+      method: 'POST',
+    }),
+
+  publishAllQuizzes: () =>
+    request('/admin/quizzes/publish-all', {
+      method: 'POST',
+    }),
+
+  createManualQuiz: (body) =>
+    request('/admin/quizzes/manual', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  unpublishQuiz: (id) =>
+    request(`/admin/quizzes/${id}/unpublish`, {
+      method: 'POST',
+    }),
+
+  addQuizQuestions: (id, ids) =>
+    request(`/admin/quizzes/${id}/questions`, {
+      method: 'POST',
+      body: JSON.stringify({ question_ids: ids }),
+    }),
+
+  removeQuizQuestion: (id, questionId) =>
+    request(`/admin/quizzes/${id}/questions/${questionId}`, {
+      method: 'DELETE',
+    }),
+
+  createQuizQuestion: (id, body) =>
+    request(`/admin/quizzes/${id}/questions/create`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // Admin students
+  students: () => request('/admin/students'),
+
+  studentStatus: (id, active) =>
+    request(`/admin/students/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ is_active: active }),
+    }),
+
+  // Student dashboard
+  studentDashboard: () => request('/dashboard'),
+
+  lessonResources: (id) => request(`/lessons/${id}/resources`),
+
+  watchProgress: (id, body) =>
+    request(`/lessons/${id}/watch-progress`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  getWatchProgress: (id) =>
+    request(`/lessons/${id}/watch-progress`),
+
+  gamification: () => request('/gamification'),
+
+  registerDevice: (body) =>
+    request('/device-tokens', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  removeDevice: (token) =>
+    request(`/device-tokens/${encodeURIComponent(token)}`, {
+      method: 'DELETE',
+    }),
+
+  requestEmailVerification: () =>
+    request('/auth/verify-email/request', {
+      method: 'POST',
+    }),
+
+  verifyEmail: (token) =>
+    request('/auth/verify-email', {
+      method: 'POST',
+      body: JSON.stringify({ token }),
+    }),
+
+  // AI Tutor
+  tutor: (body) =>
+    request('/ai/tutor/rag', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  ragTutor: (body) =>
+    request('/ai/tutor/rag', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  evaluateSpeaking: (body) =>
+    request('/ai/speaking/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  conversations: () => request('/ai/conversations'),
+
+  createConversation: (body) =>
+    request('/ai/conversations', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  messages: (id) =>
+    request(`/ai/conversations/${id}/messages`),
+
+  saveMessage: (body) =>
+    request('/ai/messages', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // Quiz attempts
+  myAttempts: (id) =>
+    request(`/quizzes/${id}/attempts/me`),
+
+  reviewAttempt: (id, attemptId) =>
+    request(`/quizzes/${id}/review/${attemptId}`),
+
+  // Analytics
+  analytics: () => request('/analytics'),
+
+  advancedAnalytics: () => request('/analytics/advanced'),
+
+  detailedAdminAnalytics: () =>
+    request('/admin/analytics/detailed'),
+
+  adminAnalytics: () => request('/admin/analytics'),
+
+  adminAdvancedAnalytics: () =>
+    request('/admin/analytics/advanced'),
+
+  auditLogs: () => request('/admin/audit-logs'),
+
+  // Leaderboard
+  leaderboard: (limit = 20) =>
+    request(`/leaderboard?limit=${limit}`),
+
+  // Notifications
+  notifications: () => request('/notifications'),
+
+  markNotificationsRead: (id) =>
+    request('/notifications/read', {
+      method: 'POST',
+      body: JSON.stringify(id ? { id } : {}),
+    }),
+
+  // Bookmarks
+  bookmarks: () => request('/bookmarks'),
+
+  addBookmark: (body) =>
+    request('/bookmarks', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  deleteBookmark: (id) =>
+    request(`/bookmarks/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Reviews
+  reviews: (courseId) =>
+    request(`/courses/${courseId}/reviews`),
+
+  addReview: (courseId, body) =>
+    request(`/courses/${courseId}/reviews`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // Certificates
+  certificates: () => request('/certificates'),
+
+  issueCertificate: (courseId) =>
+    request(`/certificates/course/${courseId}/issue`, {
+      method: 'POST',
+    }),
+
+  certificatePdfUrl: (certificateId) =>
+    `${BASE_URL}/certificates/${encodeURIComponent(certificateId)}/pdf`,
+
+  // Badges
+  badges: () => request('/badges'),
+
+  // Admin management
+  adminList: () =>
+    request('/admin/users/admins'),
+
+  adminCreate: (body) =>
+    request('/admin/users/admins', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  adminStatus: (id, active) =>
+    request(`/admin/users/admins/${id}/status`, {
+      method: 'PUT',
+      body: JSON.stringify({ is_active: active }),
+    }),
+
+  adminDelete: (id) =>
+    request(`/admin/users/admins/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Course catalog
+  studentCourses: (params = {}) => {
+    const query = new URLSearchParams();
+
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        query.set(key, String(value));
+      }
+    });
+
+    return request(
+      `/courses${query.toString() ? `?${query.toString()}` : ''}`
+    );
+  },
+
+  catalogCategories: () =>
+    request('/catalog/categories'),
+
+  featuredCatalog: (limit = 8) =>
+    request(`/catalog/featured?limit=${limit}`),
+
+  courseOverview: (id) =>
+    request(`/courses/${id}/overview`),
+
+  studentCourse: (id) =>
+    request(`/courses/${id}`),
+
+  studentModules: (id) =>
+    request(`/courses/${id}/modules`),
+
+  studentLessons: (moduleId) =>
+    request(`/modules/${moduleId}/lessons`),
+
+  studentLesson: (id) =>
+    request(`/lessons/${id}`),
+
+  enroll: (id) =>
+    request(`/courses/${id}/enroll`, {
+      method: 'POST',
+    }),
+
+  enrollments: () => request('/enrollments'),
+
+  progress: () => request('/progress'),
+
+  courseProgress: (id) =>
+    request(`/courses/${id}/progress`),
+
+  // Offline lesson completion
+  completeLesson: async (id) => {
+    try {
+      return await request(`/lessons/${id}/complete`, {
+        method: 'POST',
+      });
+    } catch (error) {
+      const stored = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
+      const queue = JSON.parse(stored || '[]');
+
+      queue.push({
+        id: `lesson-${id}-${Date.now()}`,
+        type: 'complete_lesson',
+        payload: {
+          lesson_id: id,
+        },
+        created_at: new Date().toISOString(),
+      });
+
+      await AsyncStorage.setItem(
+        OFFLINE_QUEUE_KEY,
+        JSON.stringify(queue)
+      );
+
+      return {
+        queued: true,
+        lesson_id: id,
+        message:
+          'Saved offline. It will sync when you reconnect.',
+      };
+    }
+  },
+
+  // Student quizzes
+  quizzesForCourse: (id) =>
+    request(`/quizzes?course_id=${encodeURIComponent(id)}`),
+
+  studentQuizzes: () => request('/quizzes'),
+
+  studentQuiz: (id) =>
+    request(`/quizzes/${id}`),
+
+  quizQuestions: (id) =>
+    request(`/quizzes/${id}/questions`),
+
+  startQuiz: (id) =>
+    request(`/quizzes/${id}/start`, {
+      method: 'POST',
+    }),
+
+  submitQuiz: (id, body) =>
+    request(`/quizzes/${id}/submit`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  quizResults: (id) =>
+    request(`/quizzes/${id}/results`),
+
+  allResults: () => request('/results'),
+
+  // Notes
+  notes: () => request('/notes'),
+
+  addNote: (body) =>
+    request('/notes', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  updateNote: (id, body) =>
+    request(`/notes/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+
+  deleteNote: (id) =>
+    request(`/notes/${id}`, {
+      method: 'DELETE',
+    }),
+
+  // Admin AI content generation
+  aiGenerateCourse: (body) =>
+    request('/admin/ai/generate-course', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  aiSaveCourse: (body) =>
+    request('/admin/ai/generate-course/save', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  aiGenerateQuiz: (body) =>
+    request('/admin/ai/generate-quiz', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  aiSaveQuiz: (body) =>
+    request('/admin/ai/generate-quiz/save', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // Personalized learning
+  personalizedPath: () =>
+    request('/personalized/path'),
+
+  aiCoach: () =>
+    request('/ai/coach'),
+
+  personalizedQuiz: (body = {}) =>
+    request('/ai/personalized-quiz', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  studyPlan: (body = {}) =>
+    request('/ai/study-plan', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // PDF -> AI course
+  uploadPdfCourse: async (file) => {
+    const token = await AsyncStorage.getItem(TOKEN_KEY);
+    const form = new FormData();
+
+    form.append('file', file);
+
+    const response = await fetch(
+      `${BASE_URL}/admin/ai/course-from-pdf`,
+      {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          ...(token
+            ? { Authorization: `Bearer ${token}` }
+            : {}),
+        },
+        body: form,
+      }
+    );
+
+    const raw = await response.text();
     let data = null;
 
     try {
@@ -520,1693 +698,182 @@ async function request(path, options = {}) {
       data = raw;
     }
 
-    if (response.status === 401) {
-      await handleSessionExpired();
-      throw new Error('SESSION_EXPIRED');
-    }
-
     if (!response.ok) {
-      const m = errorMessage(
-        data,
-        response.status
+      throw new Error(
+        data?.detail ||
+          data?.message ||
+          `Request failed (${response.status})`
       );
-
-      if (effectiveNotifyError) {
-        notifyApp('error', m, 5000);
-      }
-
-      throw new Error(m);
     }
 
-    if (isGet) {
-      GET_CACHE.set(cacheKey, {
-        data,
-        expiresAt:
-          Date.now() + cacheTtlMs(path),
+    return data;
+  },
+
+  savePdfCourse: (body) =>
+    request('/admin/ai/course-from-pdf/save', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // At-risk students
+  atRiskStudents: () =>
+    request('/admin/students/at-risk'),
+
+  // Career roadmap
+  careerRoadmap: (role = 'AI Engineer') =>
+    request(
+      `/career/roadmap?role=${encodeURIComponent(role)}`
+    ),
+
+  // Mock interview
+  mockInterview: (body = {}) =>
+    request('/ai/mock-interview', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  evaluateMockInterview: (body = {}) =>
+    request('/ai/mock-interview/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+
+  // Course health
+  courseHealth: (id) =>
+    request(`/admin/courses/${id}/health`),
+
+  // Global search
+  globalSearch: (query, limit = 20) =>
+    request(
+      `/search?q=${encodeURIComponent(query)}&limit=${limit}`
+    ),
+
+  // Offline synchronization
+  syncOffline: async () => {
+    const stored = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
+    const queue = JSON.parse(stored || '[]');
+
+    if (!queue.length) {
+      return {
+        synced: [],
+        failed: [],
+        remaining: 0,
+      };
+    }
+
+    try {
+      const response = await request('/offline/sync', {
+        method: 'POST',
+        body: JSON.stringify({
+          actions: queue,
+        }),
       });
-    } else {
-      invalidateGetCache();
-    }
 
-    if (effectiveNotifySuccess) {
-      notifyApp(
-        'success',
-        humanizeApiMessage(
-          path,
-          method,
-          data
-        )
-      );
-    }
+      const failed = response?.failed || [];
 
-    return data;
-  };
-
-  if (isGet) {
-    const pending = execute();
-
-    GET_INFLIGHT.set(
-      cacheKey,
-      pending
-    );
-
-    try {
-      return await pending;
-    } finally {
-      GET_INFLIGHT.delete(cacheKey);
-    }
-  }
-
-  return execute();
-}
-
-/*
- * ============================================================
- * FILE UPLOAD
- * ============================================================
- */
-
-async function upload(
-  path,
-  file,
-  fields = {}
-) {
-  ensureBaseUrl();
-
-  const token =
-    await AsyncStorage.getItem(
-      TOKEN_KEY
-    );
-
-  const form = new FormData();
-
-  Object.entries(fields).forEach(
-    ([k, v]) => {
-      if (
-        v !== undefined &&
-        v !== null
-      ) {
-        form.append(k, String(v));
-      }
-    }
-  );
-
-  if (Platform.OS === 'web') {
-    let webFile = file?.file;
-
-    if (!(webFile instanceof Blob)) {
-      if (!file?.uri) {
-        throw new Error(
-          'The selected file has no URI. Please choose the file again.'
-        );
-      }
-
-      const blobResponse =
-        await fetch(file.uri);
-
-      if (!blobResponse.ok) {
-        throw new Error(
-          'Unable to read the selected file in the browser.'
-        );
-      }
-
-      webFile =
-        await blobResponse.blob();
-    }
-
-    const mime =
-      file.mimeType ||
-      file.type ||
-      webFile.type ||
-      'application/octet-stream';
-
-    if (
-      typeof File !== 'undefined' &&
-      !(webFile instanceof File)
-    ) {
-      webFile = new File(
-        [webFile],
-        file.name || 'upload',
-        { type: mime }
-      );
-    }
-
-    form.append(
-      'file',
-      webFile,
-      file.name || 'upload'
-    );
-  } else {
-    form.append('file', {
-      uri: file.uri,
-      name: file.name || 'upload',
-      type:
-        file.mimeType ||
-        file.type ||
-        'application/octet-stream',
-    });
-  }
-
-  const controller =
-    new AbortController();
-
-  const timeout = setTimeout(
-    () => controller.abort(),
-    120000
-  );
-
-  try {
-    const response =
-      await fetch(
-        `${BASE_URL}${path}`,
-        {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            ...(token
-              ? {
-                Authorization:
-                  `Bearer ${token}`,
-              }
-              : {}),
-          },
-          body: form,
-          signal: controller.signal,
-        }
+      const failedIds = new Set(
+        failed.map((item) => item.id)
       );
 
-    const raw =
-      await response.text();
-
-    let data = null;
-
-    try {
-      data = raw
-        ? JSON.parse(raw)
-        : null;
-    } catch {
-      data = raw;
-    }
-
-    if (!response.ok) {
-      const m = errorMessage(
-        data,
-        response.status
+      const remaining = queue.filter(
+        (item) => failedIds.has(item.id)
       );
 
-      notifyApp(
-        'error',
-        m,
-        5000
+      await AsyncStorage.setItem(
+        OFFLINE_QUEUE_KEY,
+        JSON.stringify(remaining)
       );
 
-      throw new Error(m);
+      return {
+        ...response,
+        remaining: remaining.length,
+      };
+    } catch (error) {
+      return {
+        synced: [],
+        failed: [],
+        remaining: queue.length,
+        offline: true,
+        message:
+          error?.message || 'Offline sync failed.',
+      };
     }
-
-    invalidateGetCache();
-
-    notifyApp(
-      'success',
-      humanizeApiMessage(
-        path,
-        'POST',
-        data
-      )
-    );
-
-    return data;
-  } catch (e) {
-    if (e?.name === 'AbortError') {
-      const msg =
-        'Upload timed out. Please try a smaller file or check the backend.';
-
-      notifyApp(
-        'error',
-        msg,
-        5000
-      );
-
-      throw new Error(msg);
-    }
-
-    throw e;
-  } finally {
-    clearTimeout(timeout);
-  }
-}
-
-/*
- * ============================================================
- * HELPERS
- * ============================================================
- */
-
-const idOf = x =>
-  String(x?._id ?? x?.id ?? '');
-
-const listOf = x =>
-  Array.isArray(x)
-    ? x
-    : x?.items ||
-    x?.data ||
-    [];
-
-/*
- * ============================================================
- * AUTH STORAGE
- * ============================================================
- */
-
-export async function setStoredAuth(
-  token,
-  user = null
-) {
-  if (
-    !token ||
-    typeof token !== 'string'
-  ) {
-    throw new Error(
-      'OAuth login did not return a valid access token.'
-    );
-  }
-
-  await AsyncStorage.setItem(
-    TOKEN_KEY,
-    token
-  );
-
-  if (user) {
-    sessionRole = user.role || null;
-    sessionExpiryHandled = false;
-    await AsyncStorage.setItem(
-      USER_KEY,
-      JSON.stringify(user)
-    );
-  }
-
-  return token;
-}
-
-export async function clearStoredAuth() {
-  sessionRole = null;
-  sessionExpiryHandled = false;
-  await AsyncStorage.multiRemove([
-    TOKEN_KEY,
-    USER_KEY,
-  ]);
-}
-
-/*
- * ============================================================
- * API
- * ============================================================
- */
-
-export const api = {
-  BASE_URL,
-  idOf,
-  listOf,
-
-  login: async (
-    email,
-    password
-  ) => {
-    const d = await request(
-      '/auth/login',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          email,
-          password,
-        }),
-      }
-    );
-
-    await AsyncStorage.setItem(
-      TOKEN_KEY,
-      d.access_token
-    );
-
-    sessionRole = d.user?.role || null;
-    sessionExpiryHandled = false;
-
-    await AsyncStorage.setItem(
-      USER_KEY,
-      JSON.stringify(d.user)
-    );
-
-    return d;
   },
 
-  setStoredAuth,
-
-  clearStoredAuth,
-
-  getStoredToken: async () =>
-    AsyncStorage.getItem(
-      TOKEN_KEY
-    ),
-
-  profile: async () =>
-    request('/profile', {
-      notifySuccess: false,
-      notifyError: false,
-    }),
-
-  register: p =>
-    request('/auth/register', {
-      method: 'POST',
-      body: JSON.stringify(p),
-    }),
-
-  registerResend: email =>
-    request(
-      '/auth/register/resend',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          email,
-        }),
-      }
-    ),
-
-  resendRegistration: email =>
-    request(
-      '/auth/register/resend',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          email,
-        }),
-      }
-    ),
-
-  forgotPassword: email =>
-    request(
-      '/auth/forgot-password',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          email,
-        }),
-      }
-    ),
-
-  resetPassword: (
-    token,
-    password
-  ) =>
-    request(
-      '/auth/reset-password',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          token,
-          password,
-        }),
-      }
-    ),
-
-  logout: async () => {
-    sessionRole = null;
-    sessionExpiryHandled = false;
-    await AsyncStorage.multiRemove([
-      TOKEN_KEY,
-      USER_KEY,
-    ]);
-
-    notifyApp(
-      'success',
-      'Logged out successfully.'
-    );
+  offlineQueueSize: async () => {
+    const stored = await AsyncStorage.getItem(OFFLINE_QUEUE_KEY);
+    const queue = JSON.parse(stored || '[]');
+    return queue.length;
   },
 
-  getStoredUser: async () => {
-    const v =
-      await AsyncStorage.getItem(
-        USER_KEY
-      );
-
-    const user = v ? JSON.parse(v) : null;
-    sessionRole = user?.role || null;
-    return user;
-  },
-
-  get: p =>
-    request(p),
-
-  post: (p, b) =>
-    request(p, {
+  // Adaptive test
+  adaptiveTest: (body) =>
+    request('/adaptive/tests', {
       method: 'POST',
-      body: JSON.stringify(b),
+      body: JSON.stringify(body),
     }),
 
-  put: (p, b) =>
-    request(p, {
-      method: 'PUT',
-      body: JSON.stringify(b),
-    }),
-
-  del: p =>
-    request(p, {
-      method: 'DELETE',
-    }),
-
-  /*
-   * ========================================================
-   * ADMIN
-   * ========================================================
-   */
-
-  storageHealth: () =>
-    request('/storage/health'),
-
-  adminDashboard: () =>
-    request('/admin/dashboard'),
-
-  courses: (params = {}) => {
-    const q = new URLSearchParams();
-    Object.entries(params || {}).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && String(value) !== '' && String(value).toLowerCase() !== 'all') {
-        q.set(key, String(value));
-      }
-    });
-    const suffix = q.toString() ? `?${q.toString()}` : '';
-    return request(`/admin/courses${suffix}`);
-  },
-
-  course: id =>
-    request(`/admin/courses/${id}`),
-
-  createCourse: b =>
-    request('/admin/courses', {
+  adaptiveSubmit: (body) =>
+    request('/adaptive/tests/submit', {
       method: 'POST',
-      body: JSON.stringify(b),
+      body: JSON.stringify(body),
     }),
 
-  updateCourse: (id, b) =>
-    request(`/admin/courses/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(b),
-    }),
+  // Flashcards
+  flashcards: () => request('/flashcards'),
 
-  deleteCourse: id =>
-    request(`/admin/courses/${id}`, {
-      method: 'DELETE',
-    }),
-
-  courseCategories: () =>
-    request('/admin/course-categories'),
-
-  quizCategories: () =>
-    request('/admin/quiz-categories'),
-
-  adminTaxonomy: () =>
-    request('/admin/taxonomy'),
-
-  adminCategories: () =>
-    request('/admin/categories'),
-
-  createAdminCategory: body =>
-    request('/admin/categories', { method: 'POST', body: JSON.stringify(body) }),
-
-  updateAdminCategory: (id, body) =>
-    request(`/admin/categories/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }),
-
-  deleteAdminCategory: id =>
-    request(`/admin/categories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-
-  createAdminSubcategory: (categoryId, body) =>
-    request(`/admin/categories/${encodeURIComponent(categoryId)}/subcategories`, { method: 'POST', body: JSON.stringify(body) }),
-
-  updateAdminSubcategory: (id, body) =>
-    request(`/admin/subcategories/${encodeURIComponent(id)}`, { method: 'PUT', body: JSON.stringify(body) }),
-
-  deleteAdminSubcategory: id =>
-    request(`/admin/subcategories/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-
-  courseResources: id =>
-    request(
-      `/admin/courses/${id}/resources`
-    ),
-
-  addCourseResource: (id, b) =>
-    request(
-      `/admin/courses/${id}/resources`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  uploadCourseResource: (
-    id,
-    file,
-    fields = {}
-  ) =>
-    upload(
-      `/admin/courses/${id}/resources/upload`,
-      file,
-      fields
-    ),
-
-  deleteCourseResource: (
-    id,
-    rid
-  ) =>
-    request(
-      `/admin/courses/${id}/resources/${rid}`,
-      {
-        method: 'DELETE',
-      }
-    ),
-
-  publishCourse: id =>
-    request(
-      `/admin/courses/${id}/publish`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  unpublishCourse: id =>
-    request(
-      `/admin/courses/${id}/unpublish`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  modules: cid =>
-    request(
-      `/admin/courses/${cid}/modules`
-    ),
-
-  createModule: (cid, b) =>
-    request(
-      `/admin/courses/${cid}/modules`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  updateModule: (id, b) =>
-    request(`/admin/modules/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(b),
-    }),
-
-  publishModule: id =>
-    request(
-      `/admin/modules/${id}/publish`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  unpublishModule: id =>
-    request(
-      `/admin/modules/${id}/unpublish`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  deleteModule: id =>
-    request(`/admin/modules/${id}`, {
-      method: 'DELETE',
-    }),
-
-  lessons: mid =>
-    request(
-      `/admin/modules/${mid}/lessons`
-    ),
-
-  createLesson: (mid, b) =>
-    request(
-      `/admin/modules/${mid}/lessons`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  updateLesson: (id, b) =>
-    request(`/admin/lessons/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(b),
-    }),
-
-  publishLesson: id =>
-    request(
-      `/admin/lessons/${id}/publish`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  unpublishLesson: id =>
-    request(
-      `/admin/lessons/${id}/unpublish`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  deleteLesson: id =>
-    request(`/admin/lessons/${id}`, {
-      method: 'DELETE',
-    }),
-
-  uploadLessonResource: (
-    id,
-    file,
-    fields = {}
-  ) =>
-    upload(
-      `/admin/lessons/${id}/resources/upload`,
-      file,
-      fields
-    ),
-
-  questions: (p = {}) => {
-    const q =
-      new URLSearchParams();
-
-    if (p.search) {
-      q.set(
-        'search',
-        p.search
-      );
-    }
-
-    if (p.difficulty) {
-      q.set(
-        'difficulty',
-        p.difficulty
-      );
-    }
-
-    return request(
-      `/admin/questions${q.toString()
-        ? `?${q}`
-        : ''
-      }`
-    );
-  },
-
-  createQuestion: b =>
-    request('/admin/questions', {
-      method: 'POST',
-      body: JSON.stringify(b),
-    }),
-
-  updateQuestion: (id, b) =>
-    request(
-      `/admin/questions/${id}`,
-      {
-        method: 'PUT',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  deleteQuestion: id =>
-    request(
-      `/admin/questions/${id}`,
-      {
-        method: 'DELETE',
-      }
-    ),
-
-  quizzes: (params = {}) => {
-    const q = new URLSearchParams();
-    Object.entries(params || {}).forEach(([key, value]) => {
-      if (value !== undefined && value !== null && String(value) !== '' && String(value).toLowerCase() !== 'all') {
-        q.set(key, String(value));
-      }
-    });
-    const suffix = q.toString() ? `?${q.toString()}` : '';
-    return request(`/admin/quizzes${suffix}`);
-  },
-
-  quiz: id =>
-    request(`/admin/quizzes/${id}`),
-
-  createQuiz: b =>
-    request('/admin/quizzes', {
-      method: 'POST',
-      body: JSON.stringify(b),
-    }),
-
-  updateQuiz: (id, b) =>
-    request(`/admin/quizzes/${id}`, {
-      method: 'PUT',
-      body: JSON.stringify(b),
-    }),
-
-  deleteQuiz: id =>
-    request(`/admin/quizzes/${id}`, {
-      method: 'DELETE',
-    }),
-
-  publishQuiz: id =>
-    request(
-      `/admin/quizzes/${id}/publish`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  unpublishQuiz: id =>
-    request(
-      `/admin/quizzes/${id}/unpublish`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  addQuizQuestions: (
-    id,
-    ids
-  ) =>
-    request(
-      `/admin/quizzes/${id}/questions`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          question_ids: ids,
-        }),
-      }
-    ),
-
-  removeQuizQuestion: (
-    id,
-    qid
-  ) =>
-    request(
-      `/admin/quizzes/${id}/questions/${qid}`,
-      {
-        method: 'DELETE',
-      }
-    ),
-
-  createQuizQuestion: (
-    id,
-    b
-  ) =>
-    request(
-      `/admin/quizzes/${id}/questions/create`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  students: () =>
-    request('/admin/students'),
-
-  studentStatus: (
-    id,
-    active
-  ) =>
-    request(
-      `/admin/students/${id}/status`,
-      {
-        method: 'PUT',
-        body: JSON.stringify({
-          is_active: active,
-        }),
-      }
-    ),
-
-  /*
-   * ========================================================
-   * STUDENT
-   * ========================================================
-   */
-
-  studentDashboard: () =>
-    request('/dashboard'),
-
-  lessonResources: id =>
-    request(
-      `/lessons/${id}/resources`
-    ),
-
-  watchProgress: (
-    id,
-    b
-  ) =>
-    request(
-      `/lessons/${id}/watch-progress`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  getWatchProgress: id =>
-    request(
-      `/lessons/${id}/watch-progress`
-    ),
-
-  gamification: () =>
-    request('/gamification'),
-
-  gamificationStart: (
-    slug,
-    b = {}
-  ) =>
-    request(
-      `/gamification/games/${encodeURIComponent(
-        slug
-      )}/start`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  gamificationAnswer: (
-    sessionId,
-    b
-  ) =>
-    request(
-      `/gamification/sessions/${encodeURIComponent(
-        sessionId
-      )}/answer`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  gamificationFinish: sessionId =>
-    request(
-      `/gamification/sessions/${encodeURIComponent(
-        sessionId
-      )}/finish`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  registerDevice: b =>
-    request('/device-tokens', {
-      method: 'POST',
-      body: JSON.stringify(b),
-    }),
-
-  removeDevice: t =>
-    request(
-      `/device-tokens/${encodeURIComponent(
-        t
-      )}`,
-      {
-        method: 'DELETE',
-      }
-    ),
-
-  requestEmailVerification: () =>
-    request(
-      '/auth/verify-email/request',
-      {
-        method: 'POST',
-      }
-    ),
-
-  verifyEmail: t =>
-    request('/auth/verify-email', {
-      method: 'POST',
-      body: JSON.stringify({
-        token: t,
-      }),
-    }),
-
-  tutor: b =>
-    request('/ai/tutor/rag', {
-      method: 'POST',
-      body: JSON.stringify(b),
-    }),
-
-  evaluateSpeaking: b =>
-    request(
-      '/ai/speaking/evaluate',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  myAttempts: id =>
-    request(
-      `/quizzes/${id}/attempts/me`
-    ),
-
-  reviewAttempt: (
-    id,
-    a
-  ) =>
-    request(
-      `/quizzes/${id}/review/${a}`
-    ),
-
-  detailedAdminAnalytics: () =>
-    request(
-      '/admin/analytics/detailed'
-    ),
-
-  auditLogs: () =>
-    request('/admin/audit-logs'),
-
-  analytics: () =>
-    request('/analytics'),
-
-  leaderboard: (
-    limit = 20
-  ) =>
-    request(
-      `/leaderboard?limit=${limit}`
-    ),
-
-  notifications: () =>
-    request('/notifications'),
-
-  markNotificationsRead: id =>
-    request(
-      '/notifications/read',
-      {
-        method: 'POST',
-        body: JSON.stringify(
-          id ? { id } : {}
-        ),
-      }
-    ),
-
-  bookmarks: () =>
-    request('/bookmarks'),
-
-  addBookmark: b =>
-    request('/bookmarks', {
-      method: 'POST',
-      body: JSON.stringify(b),
-    }),
-
-  deleteBookmark: id =>
-    request(`/bookmarks/${id}`, {
-      method: 'DELETE',
-    }),
-
-  reviews: courseId =>
-    request(
-      `/courses/${courseId}/reviews`
-    ),
-
-  addReview: (
-    courseId,
-    b
-  ) =>
-    request(
-      `/courses/${courseId}/reviews`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  certificates: () =>
-    request('/certificates'),
-
-  issueCertificate: courseId =>
-    request(
-      `/certificates/course/${courseId}/issue`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  certificateAccess: certificateId =>
-    request(
-      `/certificates/${encodeURIComponent(
-        certificateId
-      )}/access`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  certificatePdfUrl: certificateId =>
-    `${BASE_URL}/certificates/${encodeURIComponent(
-      certificateId
-    )}/pdf`,
-
-  previewCertificateUrl:
-    certificateId =>
-      `${BASE_URL}/certificates/${encodeURIComponent(
-        certificateId
-      )}/preview`,
-
-  downloadCertificateUrl:
-    certificateId =>
-      `${BASE_URL}/certificates/${encodeURIComponent(
-        certificateId
-      )}/pdf`,
-
-  badges: () =>
-    request('/badges'),
-
-  adminAnalytics: () =>
-    request('/admin/analytics'),
-
-  adminList: () =>
-    request('/admin/users/admins'),
-
-  adminCreate: b =>
-    request('/admin/users/admins', {
-      method: 'POST',
-      body: JSON.stringify(b),
-    }),
-
-  adminStatus: (
-    id,
-    active
-  ) =>
-    request(
-      `/admin/users/admins/${id}/status`,
-      {
-        method: 'PUT',
-        body: JSON.stringify({
-          is_active: active,
-        }),
-      }
-    ),
-
-  adminDelete: id =>
-    request(
-      `/admin/users/admins/${id}`,
-      {
-        method: 'DELETE',
-      }
-    ),
-
-  /*
-   * ========================================================
-   * HOME / COURSES
-   * ========================================================
-   */
-
-  studentHome: () =>
-    request('/home'),
-
-  studentCourses: (
-    params = {}
-  ) => {
-    const q =
-      new URLSearchParams();
-
-    Object.entries(params).forEach(
-      ([k, v]) => {
-        if (
-          v !== undefined &&
-          v !== null &&
-          v !== ''
-        ) {
-          q.set(
-            k,
-            String(v)
-          );
-        }
-      }
-    );
-
-    return request(
-      `/courses${q.toString()
-        ? `?${q}`
-        : ''
-      }`
-    );
-  },
-
-  catalogCategories: () =>
-    request(
-      '/catalog/categories'
-    ),
-
-  featuredCatalog: (
-    limit = 8
-  ) =>
-    request(
-      `/catalog/featured?limit=${limit}`
-    ),
-
-  courseOverview: id =>
-    request(
-      `/courses/${id}/overview`
-    ),
-
-  studentCourse: id =>
-    request(`/courses/${id}`),
-
-  studentModules: id =>
-    request(
-      `/courses/${id}/modules`
-    ),
-
-  studentLessons: mid =>
-    request(
-      `/modules/${mid}/lessons`
-    ),
-
-  studentLesson: id =>
-    request(`/lessons/${id}`),
-
-  lessonView: id =>
-    request(`/lessons/${id}`),
-
-  enroll: id =>
-    request(
-      `/courses/${id}/enroll`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  enrollments: () =>
-    request('/enrollments'),
-
-  progress: () =>
-    request('/progress'),
-
-  courseProgress: id =>
-    request(
-      `/courses/${id}/progress`
-    ),
-
-  completeLesson: id =>
-    request(
-      `/lessons/${id}/complete`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  quizzesForCourse: id =>
-    request(
-      `/quizzes?course_id=${encodeURIComponent(
-        id
-      )}`
-    ),
-
-  studentQuizzes: () =>
-    request('/quizzes'),
-
-  studentQuiz: id =>
-    request(`/quizzes/${id}`),
-
-  quizBundle: id =>
-    request(
-      `/quizzes/${id}/bundle`
-    ),
-
-  quizQuestions: id =>
-    request(
-      `/quizzes/${id}/questions`
-    ),
-
-  startQuiz: id =>
-    request(
-      `/quizzes/${id}/start`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  submitQuiz: (
-    id,
-    b
-  ) =>
-    request(
-      `/quizzes/${id}/submit`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  quizResults: id =>
-    request(
-      `/quizzes/${id}/results`
-    ),
-
-  allResults: () =>
-    request('/results'),
-
-  learningSummary: () =>
-    request('/learning/summary'),
-
-  notes: () =>
-    request('/notes'),
-
-  addNote: b =>
-    request('/notes', {
-      method: 'POST',
-      body: JSON.stringify(b),
-    }),
-
-  updateNote: (
-    id,
-    b
-  ) =>
-    request(
-      `/notes/${id}`,
-      {
-        method: 'PUT',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  deleteNote: id =>
-    request(`/notes/${id}`, {
-      method: 'DELETE',
-    }),
-
-  /*
-   * ========================================================
-   * STUDY ASSISTANCE - NO AI API
-   * ========================================================
-   */
-
-  studyAssistance: () =>
-    request('/study-assistance', { notifySuccess: false }),
-
-  studySearch: (query, limit = 8) =>
-    request(`/study-assistance/search?q=${encodeURIComponent(query)}&limit=${limit}`, { notifySuccess: false }),
-
-  /*
-   * ========================================================
-   * AI
-   * ========================================================
-   */
-
-  conversations: () =>
-    request(
-      '/ai/conversations'
-    ),
-
-  createConversation: b =>
-    request(
-      '/ai/conversations',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  messages: id =>
-    request(
-      `/ai/conversations/${id}/messages`
-    ),
-
-  saveMessage: b =>
-    request('/ai/messages', {
-      method: 'POST',
-      body: JSON.stringify(b),
-    }),
-
-  aiGenerateCourse: b =>
-    request(
-      '/admin/ai/generate-course',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  aiSaveCourse: b =>
-    request(
-      '/admin/ai/generate-course/save',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  aiGenerateQuiz: b =>
-    request(
-      '/admin/ai/generate-quiz',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  aiSaveQuiz: b =>
-    request(
-      '/admin/ai/generate-quiz/save',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  ragTutor: b =>
-    request('/ai/tutor/rag', {
-      method: 'POST',
-      body: JSON.stringify(b),
-    }),
-
-  personalizedPath: () =>
-    request(
-      '/personalized/path'
-    ),
-
-  adaptiveTest: b =>
-    request(
-      '/adaptive/tests',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  adaptiveSubmit: b =>
-    request(
-      '/adaptive/tests/submit',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  /*
-   * ========================================================
-   * FLASHCARDS / ANALYTICS
-   * ========================================================
-   */
-
-  flashcards: () =>
-    request('/flashcards'),
-
-  createFlashcard: b =>
+  createFlashcard: (body) =>
     request('/flashcards', {
       method: 'POST',
-      body: JSON.stringify(b),
+      body: JSON.stringify(body),
     }),
 
   dueFlashcards: () =>
-    request(
-      '/flashcards/due'
-    ),
+    request('/flashcards/due'),
 
-  reviewFlashcard: (
-    id,
-    b
-  ) =>
-    request(
-      `/flashcards/${id}/review`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  deleteFlashcard: id =>
-    request(
-      `/flashcards/${id}`,
-      {
-        method: 'DELETE',
-      }
-    ),
-
-  advancedAnalytics: () =>
-    request(
-      '/analytics/advanced'
-    ),
-
-  analyticsSummary:
-    async () => {
-      try {
-        return await request(
-          '/analytics/summary'
-        );
-      } catch (e) {
-        // Backward-compatible fallback
-        // during rolling deployments.
-        const [
-          basic,
-          advanced,
-        ] = await Promise.all([
-          request('/analytics'),
-          request(
-            '/analytics/advanced'
-          ),
-        ]);
-
-        return {
-          basic,
-          advanced,
-        };
-      }
-    },
-
-  /*
-   * ========================================================
-   * INTERVIEW
-   * ========================================================
-   */
-
-  interviewTopics: () =>
-    request(
-      '/interview/topics'
-    ),
-
-  interviewSession: b =>
-    request(
-      '/interview/session',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  interviewEvaluate: b =>
-    request(
-      '/interview/evaluate',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  /*
-   * ========================================================
-   * COMMUNITY
-   * ========================================================
-   */
-
-  communityPosts: () =>
-    request(
-      '/community/posts'
-    ),
-
-  createCommunityPost: b =>
-    request(
-      '/community/posts',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  communityComments: id =>
-    request(
-      `/community/posts/${id}/comments`
-    ),
-
-  addCommunityComment: (
-    id,
-    b
-  ) =>
-    request(
-      `/community/posts/${id}/comments`,
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
-
-  likeCommunityPost: id =>
-    request(
-      `/community/posts/${id}/like`,
-      {
-        method: 'POST',
-      }
-    ),
-
-  /*
-   * ========================================================
-   * ADMIN ANALYTICS / LIBRARY
-   * ========================================================
-   */
-
-  adminAdvancedAnalytics: () =>
-    request(
-      '/admin/analytics/advanced'
-    ),
-
-  adminLibrary: () =>
-    request('/admin/library'),
-
-  uploadLibraryFile: (
-    file,
-    fields = {}
-  ) =>
-    upload(
-      '/admin/library/upload',
-      file,
-      fields
-    ),
-
-  addLibraryLink: b =>
-    request('/admin/library', {
+  reviewFlashcard: (id, body) =>
+    request(`/flashcards/${id}/review`, {
       method: 'POST',
-      body: JSON.stringify(b),
+      body: JSON.stringify(body),
     }),
 
-  deleteLibraryItem: id =>
-    request(
-      `/admin/library/${id}`,
-      {
-        method: 'DELETE',
-      }
-    ),
+  // Interview
+  interviewTopics: () =>
+    request('/interview/topics'),
 
-  studentLibrary: (
-    category = ''
-  ) =>
-    request(
-      `/library${category
-        ? `?category=${encodeURIComponent(
-          category
-        )}`
-        : ''
-      }`
-    ),
+  interviewSession: (body) =>
+    request('/interview/session', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
-  libraryCategories: () =>
-    request(
-      '/library/categories'
-    ),
+  interviewEvaluate: (body) =>
+    request('/interview/evaluate', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
-  downloadMediaUrl: mediaId =>
-    `${BASE_URL}/media/${encodeURIComponent(
-      mediaId
-    )}/download`,
+  // Community
+  communityPosts: () =>
+    request('/community/posts'),
 
-  bulkQuiz: b =>
-    request(
-      '/admin/bulk/quiz',
-      {
-        method: 'POST',
-        body: JSON.stringify(b),
-      }
-    ),
+  createCommunityPost: (body) =>
+    request('/community/posts', {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
-  bulkQuizFile: (file, fields = {}) =>
-    upload('/admin/bulk/quiz-file', file, fields),
+  communityComments: (id) =>
+    request(`/community/posts/${id}/comments`),
 
-  bulkCoursePdf: (
-    file,
-    fields = {}
-  ) =>
-    upload(
-      '/admin/bulk/course-pdf',
-      file,
-      fields
-    ),
+  addCommunityComment: (id, body) =>
+    request(`/community/posts/${id}/comments`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
-  /*
-   * ========================================================
-   * OFFLINE SYNC
-   * ========================================================
-   */
-
-  syncOffline:
-    async () => {
-      const q =
-        JSON.parse(
-          await AsyncStorage.getItem(
-            OFFLINE_QUEUE_KEY
-          ) || '[]'
-        );
-
-      if (!q.length) {
-        return {
-          synced: [],
-          failed: [],
-          remaining: 0,
-        };
-      }
-
-      try {
-        const r =
-          await request(
-            '/offline/sync',
-            {
-              method: 'POST',
-              body: JSON.stringify({
-                actions: q,
-              }),
-            }
-          );
-
-        const failed =
-          r.failed || [];
-
-        const failedIds =
-          new Set(
-            failed.map(
-              x => x.id
-            )
-          );
-
-        const remaining =
-          q.filter(
-            x =>
-              failedIds.has(
-                x.id
-              )
-          );
-
-        await AsyncStorage.setItem(
-          OFFLINE_QUEUE_KEY,
-          JSON.stringify(
-            remaining
-          )
-        );
-
-        return {
-          ...r,
-          remaining:
-            remaining.length,
-        };
-      } catch (e) {
-        return {
-          synced: [],
-          failed: [],
-          remaining: q.length,
-          offline: true,
-          message: e.message,
-        };
-      }
-    },
-
-  offlineQueueSize:
-    async () =>
-      JSON.parse(
-        await AsyncStorage.getItem(
-          OFFLINE_QUEUE_KEY
-        ) || '[]'
-      ).length,
+  likeCommunityPost: (id) =>
+    request(`/community/posts/${id}/like`, {
+      method: 'POST',
+    }),
 };
