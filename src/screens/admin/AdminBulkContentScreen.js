@@ -1,16 +1,18 @@
 import React, {useMemo, useState} from 'react';
 import {Alert, Text, View} from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
-import {AppShell, Badge, Button, Card, DropdownSelect, Field, Header} from '../../components/UI';
+import {AppShell, Badge, Button, Card, DropdownSelect, Field, Header, Select} from '../../components/UI';
 import {api} from '../../services/api';
 import {colors} from '../../theme';
 
-const CATEGORIES=['SSC','Banking','UPSC','English Spoken','Railway','Teaching','Defence','State Exams','Computer','General','Other'];
+const CATEGORIES=['SSC','Railway','Banking','UPSC','Computer','Teaching','Defence','State Exams','General','English Spoken','Other'];
+const SUBJECTS=['English','Hindi','Math','Reasoning','General Awareness','Current Affairs','Science','Physics','Chemistry','Biology','Computer','Java','Python','PHP','SQL','DBMS','Operating Systems','Networking','Spring Boot','Microservices','Aptitude','Other'];
 
 const SAMPLE_MULTI = [
   {
     title: 'English Grammar - Noun',
-    category: 'English',
+    categories: ['SSC','Railway','Banking'],
+    subject: 'English',
     description: 'Noun practice test',
     passing_percentage: 60,
     duration_minutes: 20,
@@ -25,7 +27,8 @@ const SAMPLE_MULTI = [
   },
   {
     title: 'English Grammar - Pronoun',
-    category: 'English',
+    categories: ['SSC','Railway','Banking'],
+    subject: 'English',
     description: 'Pronoun practice test',
     passing_percentage: 60,
     duration_minutes: 20,
@@ -95,7 +98,8 @@ export default function AdminBulkContentScreen({onBack}){
  const [tab,setTab]=useState('quiz');
  const [quizJson,setQuizJson]=useState(JSON.stringify(SAMPLE_MULTI,null,2));
  const [quizFile,setQuizFile]=useState(null);
- const [file,setFile]=useState(null),[title,setTitle]=useState(''),[category,setCategory]=useState('General'),[level,setLevel]=useState('Beginner'),[language,setLanguage]=useState('English');
+ const [quizCategories,setQuizCategories]=useState(['General']),[quizSubject,setQuizSubject]=useState('English');
+ const [file,setFile]=useState(null),[title,setTitle]=useState(''),[courseCategories,setCourseCategories]=useState(['General']),[courseSubject,setCourseSubject]=useState('English'),[level,setLevel]=useState('Beginner'),[language,setLanguage]=useState('English');
  const [busy,setBusy]=useState(false),[result,setResult]=useState(null);
 
  const quizPreview=useMemo(()=>{
@@ -129,13 +133,25 @@ export default function AdminBulkContentScreen({onBack}){
    if(!r.canceled&&r.assets?.[0]){setFile(r.assets[0]);setTitle(title||r.assets[0].name.replace(/\.pdf$/i,''));}
  };
 
+ const applyQuizDefaults=payload=>{
+   const list=asQuizList(payload);
+   const mapped=list.map(q=>{
+     const rawCategory=q?.categories??q?.category;
+     const hasExamCategories=Array.isArray(rawCategory)?rawCategory.some(x=>CATEGORIES.includes(x)):CATEGORIES.includes(String(rawCategory||''));
+     const inferredSubject=q?.subject || (!hasExamCategories&&rawCategory?String(rawCategory):quizSubject);
+     return {...q,categories:hasExamCategories?(Array.isArray(rawCategory)?rawCategory:[rawCategory]):quizCategories,subject:inferredSubject||quizSubject};
+   });
+   return Array.isArray(payload)?mapped:(payload&&Array.isArray(payload.quizzes)?{...payload,quizzes:mapped}:mapped[0]);
+ };
+
  const createQuiz=async()=>{
    try{
      setBusy(true);setResult(null);
      let data;
      try{data=JSON.parse(quizJson);}catch(e){throw new Error(`Invalid JSON: ${e.message}`);}
-     validateQuizPayload(data);
-     const d=await api.bulkQuiz(data);
+     const prepared=applyQuizDefaults(data);
+     validateQuizPayload(prepared);
+     const d=await api.bulkQuiz(prepared);
      setResult({kind:'quiz',...d});
      Alert.alert('Quiz drafts created',d.message||`${d.quiz_count||1} quiz draft(s) created.`);
    }catch(e){Alert.alert('Bulk quiz',e.message||'Unable to create quiz drafts.');}
@@ -146,7 +162,9 @@ export default function AdminBulkContentScreen({onBack}){
    try{
      setBusy(true);setResult(null);
      if(!quizFile) throw new Error('Choose a JSON file first.');
-     const d=await api.bulkQuizFile(quizFile);
+     const response=await fetch(quizFile.uri); if(!response.ok) throw new Error('Unable to read the selected JSON file.');
+     const parsed=JSON.parse(await response.text()); const prepared=applyQuizDefaults(parsed); validateQuizPayload(prepared);
+     const d=await api.bulkQuiz(prepared);
      setResult({kind:'quiz',...d});
      Alert.alert('Quiz drafts created',d.message||`${d.quiz_count||1} quiz draft(s) created.`);
    }catch(e){Alert.alert('JSON upload',e.message||'Unable to create quiz drafts.');}
@@ -157,7 +175,7 @@ export default function AdminBulkContentScreen({onBack}){
    try{
      setBusy(true);setResult(null);
      if(!file) throw new Error('Choose a PDF first.');
-     const d=await api.bulkCoursePdf(file,{title,category,level,language});
+     const d=await api.bulkCoursePdf(file,{title,categories:courseCategories.join(','),category:courseCategories[0]||'General',subject:courseSubject,level,language});
      setResult({kind:'course',...d});
      Alert.alert('Course created',`${d.module_count} modules and ${d.lesson_count} lessons were created as a draft.`);
    }catch(e){Alert.alert('PDF course',e.message);}
@@ -184,6 +202,10 @@ export default function AdminBulkContentScreen({onBack}){
          {quizFile&&<Button title="Load selected file" variant="secondary" onPress={loadSelectedQuizFile}/>} 
        </View>
        {quizFile&&<Badge tone="green">Selected: {quizFile.name}</Badge>}
+       <Select label="Default exam categories for this upload" value={quizCategories[0]} options={CATEGORIES.map(x=>({value:x,label:quizCategories.includes(x)?`✓ ${x}`:x}))} onChange={v=>setQuizCategories(prev=>prev.includes(v)?prev.filter(x=>x!==v):[...prev,v])}/>
+       <View style={{flexDirection:'row',gap:7,flexWrap:'wrap',marginBottom:8}}>{quizCategories.map(x=><Badge key={x} tone="purple">{x}</Badge>)}</View>
+       <DropdownSelect label="Default subject" value={quizSubject} onChange={setQuizSubject} options={SUBJECTS.map(x=>({value:x,label:x}))}/>
+       <Text style={{fontSize:11,color:colors.muted,marginBottom:8}}>These defaults fill missing taxonomy. Existing categories/subjects in a quiz are preserved.</Text>
        <Field label="Quiz JSON" value={quizJson} onChangeText={setQuizJson} multiline placeholder="Paste one quiz object or an array of quiz objects..." style={{minHeight:420}}/>
        <View style={{flexDirection:'row',gap:8,flexWrap:'wrap'}}>
          <Button title={busy?'Creating…':'Create Quiz Drafts'} onPress={createQuiz} disabled={busy}/>
@@ -202,7 +224,8 @@ export default function AdminBulkContentScreen({onBack}){
        <Text style={{fontFamily:'monospace',fontSize:11,color:colors.text,marginTop:8}}>{`Single quiz:
 {
   "title": "English Grammar - Noun",
-  "category": "English",
+  "categories": ["SSC", "Railway", "Banking"],
+  "subject": "English",
   "description": "10-question practice test",
   "passing_percentage": 60,
   "duration_minutes": 20,
@@ -211,13 +234,13 @@ export default function AdminBulkContentScreen({onBack}){
   ]
 }
 
-Multiple quizzes (recommended for your 18 topics):
+Multiple quizzes (recommended for topic-wise upload):
 [
-  { "title": "English Grammar - Noun", "category": "English", "questions": [...] },
-  { "title": "English Grammar - Pronoun", "category": "English", "questions": [...] }
+  { "title": "English Grammar - Noun", "categories": ["SSC","Railway","Banking"], "subject": "English", "questions": [...] },
+  { "title": "English Grammar - Pronoun", "categories": ["SSC","Railway"], "subject": "English", "questions": [...] }
 ]
 
-Also accepted: { "quizzes": [ ... ] }`}</Text>
+Legacy "category": "SSC" is still accepted. Also accepted: { "quizzes": [ ... ] }`}</Text>
        <Text style={{color:colors.muted,lineHeight:20,marginTop:10}}>correct_answer can be a zero-based number (0, 1, 2, 3), A/B/C/D, a numeric string, or the exact option text. The backend validates every quiz before inserting anything.</Text>
      </Card>
    </> : <Card>
@@ -225,11 +248,9 @@ Also accepted: { "quizzes": [ ... ] }`}</Text>
      <Text style={{color:colors.muted,lineHeight:20,marginTop:5}}>Upload an educational PDF in almost any normal textbook/tutorial layout. The importer first uses the PDF outline, then a detected Contents/Table of Contents, then heading typography/numbering as a fallback. It preserves source order and page ranges, keeps the original PDF, and never invents missing content.</Text>
      <Button title={file?`Selected: ${file.name}`:'Choose PDF'} variant="secondary" onPress={pickPdf} style={{marginTop:14}}/>
      <Field label="Course title (optional)" value={title} onChangeText={setTitle} placeholder="Auto-detect from PDF if blank"/>
-     <View style={{flexDirection:'row',gap:10,flexWrap:'wrap'}}>
-       <View style={{flex:1,minWidth:220}}><DropdownSelect label="Category" value={category} onChange={setCategory} options={CATEGORIES.map(x=>({value:x,label:x}))}/></View>
-       <View style={{flex:1,minWidth:220}}><DropdownSelect label="Level" value={level} onChange={setLevel} options={['Beginner','Intermediate','Advanced'].map(x=>({value:x,label:x}))}/></View>
-       <View style={{flex:1,minWidth:220}}><DropdownSelect label="Language" value={language} onChange={setLanguage} options={['English','Hindi','Hinglish','Other'].map(x=>({value:x,label:x}))}/></View>
-     </View>
+     <Select label="Exam categories — choose one or more" value={courseCategories[0]} options={CATEGORIES.map(x=>({value:x,label:courseCategories.includes(x)?`✓ ${x}`:x}))} onChange={v=>setCourseCategories(prev=>prev.includes(v)?prev.filter(x=>x!==v):[...prev,v])}/>
+     <View style={{flexDirection:'row',gap:7,flexWrap:'wrap',marginBottom:8}}>{courseCategories.map(x=><Badge key={x} tone="purple">{x}</Badge>)}</View>
+     <View style={{flexDirection:'row',gap:10,flexWrap:'wrap'}}><View style={{flex:1,minWidth:220}}><DropdownSelect label="Subject" value={courseSubject} onChange={setCourseSubject} options={SUBJECTS.map(x=>({value:x,label:x}))}/></View><View style={{flex:1,minWidth:220}}><DropdownSelect label="Level" value={level} onChange={setLevel} options={['Beginner','Intermediate','Advanced'].map(x=>({value:x,label:x}))}/></View><View style={{flex:1,minWidth:220}}><DropdownSelect label="Language" value={language} onChange={setLanguage} options={['English','Hindi','Hinglish','Other'].map(x=>({value:x,label:x}))}/></View></View>
      <Button title={busy?'Processing PDF…':'Generate Course Draft'} onPress={createCourse} disabled={busy}/>
      <Card style={{marginTop:14,backgroundColor:'#F8F9FD'}}><Text style={{fontWeight:'900',color:colors.navy}}>PDF format — no fixed template required</Text><Text style={{color:colors.text,lineHeight:21,marginTop:7}}>✓ Normal text PDF, textbook, tutorial, study guide or manual is supported{`\n`}✓ A PDF outline/bookmark tree is preferred when available{`\n`}✓ A Contents/Table of Contents page is helpful but not mandatory{`\n`}✓ Numbered chapters/sections such as 1, 1.1, 1.2 are understood{`\n`}✓ Publisher-specific layouts are supported{`\n`}✓ Bullets, examples, exercises, rules and paragraphs are preserved as source text{`\n`}✓ The original PDF is stored and each lesson keeps its source page range{`\n`}✕ A scanned/image-only PDF needs OCR before editable text lessons can be generated</Text></Card>
      <Card style={{marginTop:10,backgroundColor:'#FFF7ED',borderColor:'#FED7AA'}}><Text style={{fontWeight:'900',color:'#9A3412'}}>Important</Text><Text style={{color:'#9A3412',lineHeight:20,marginTop:5}}>The importer does not invent missing chapter content. If a topic is present in the TOC but its body is absent from the uploaded PDF, that lesson remains a draft and clearly shows that source content is missing.</Text></Card>

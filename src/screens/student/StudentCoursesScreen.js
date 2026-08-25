@@ -6,6 +6,7 @@ import { colors } from '../../theme';
 
 const fallbackCategories = ['General', 'English Spoken', 'English Grammar', 'Banking', 'Railway', 'Teaching', 'Defence', 'SSC', 'UPSC', 'Computer'];
 const fallbackExams = ['General', 'SSC', 'Banking', 'Railway', 'Teaching', 'UPSC', 'Defence', 'State Exams', 'Computer'];
+const fallbackSubjects = ['English','Hindi','Math','Reasoning','General Awareness','Science','Physics','Chemistry','Biology','Computer','Java','Python','PHP','SQL','Spring Boot','Microservices','Aptitude','Other'];
 
 function CourseCard({ course, onOpen, wide }) {
   const title = course.name || course.title || 'Course';
@@ -18,7 +19,7 @@ function CourseCard({ course, onOpen, wide }) {
         </View>
         <View style={{ padding: 14, flex: 1 }}>
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6 }}>
-            <Badge tone="purple">{course.category || 'General'}</Badge>
+            {(Array.isArray(course.categories)?course.categories:(course.category?[course.category]:['General'])).slice(0,3).map(x=><Badge key={x} tone="purple">{x}</Badge>)}<Badge tone="blue">{course.subject||'General'}</Badge>
             <Badge tone="green">{course.level || 'Beginner'}</Badge>
             {course.is_enrolled && <Badge tone="pink">Enrolled</Badge>}
           </View>
@@ -53,9 +54,11 @@ export default function StudentCoursesScreen({ openCourse }) {
   const [items, setItems] = useState([]);
   const [categories, setCategories] = useState(fallbackCategories);
   const [exams, setExams] = useState(fallbackExams);
+  const [subjects, setSubjects] = useState(fallbackSubjects);
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [exam, setExam] = useState('');
+  const [subject, setSubject] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -64,13 +67,14 @@ export default function StudentCoursesScreen({ openCourse }) {
       setLoading(true);
       setError('');
       const [coursesResult, catalogResult] = await Promise.all([
-        api.studentCourses({ search: search.trim(), category, exam }),
+        api.studentCourses({ search: search.trim(), category, exam, subject }),
         api.catalogCategories(),
       ]);
       setItems(api.listOf(coursesResult));
       if (catalogResult) {
         if (Array.isArray(catalogResult.categories) && catalogResult.categories.length) setCategories(catalogResult.categories);
         if (Array.isArray(catalogResult.exams) && catalogResult.exams.length) setExams(catalogResult.exams);
+        if (Array.isArray(catalogResult.subjects) && catalogResult.subjects.length) setSubjects(catalogResult.subjects);
       }
     } catch (e) {
       setError(e?.message || 'Unable to load courses.');
@@ -79,12 +83,12 @@ export default function StudentCoursesScreen({ openCourse }) {
     }
   };
 
-  useEffect(() => { load(); }, [category, exam]);
+  useEffect(() => { load(); }, [category, exam, subject]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     if (!q) return items;
-    return items.filter(c => [c.name, c.title, c.description, c.category, c.exam, c.level, ...(c.tags || [])].filter(Boolean).join(' ').toLowerCase().includes(q));
+    return items.filter(c => [c.name, c.title, c.description, c.category, c.exam, c.level, ...(c.tags || [], ...(Array.isArray(c.categories)?c.categories:[c.category]), c.subject)].filter(Boolean).join(' ').toLowerCase().includes(q));
   }, [items, search]);
 
   const submitSearch = () => load();
@@ -121,9 +125,14 @@ export default function StudentCoursesScreen({ openCourse }) {
         {exams.map(x => <Pressable key={x} onPress={() => setExam(exam === x ? '' : x)} style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 13, borderWidth: 1, borderColor: exam === x ? colors.primary : colors.border, backgroundColor: exam === x ? colors.primary : '#fff' }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 11, fontWeight: '900', color: exam === x ? '#fff' : colors.text }}>{x}</Text></Pressable>)}
       </ScrollView>
 
+      <SectionTitle title="Explore by Subject" />
+      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+        {subjects.slice(0,20).map(x => <Pressable key={x} onPress={() => setSubject(subject === x ? '' : x)} style={{ paddingHorizontal: 14, paddingVertical: 10, borderRadius: 13, borderWidth: 1, borderColor: subject === x ? colors.primary : colors.border, backgroundColor: subject === x ? colors.primary : '#fff' }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 11, fontWeight: '900', color: subject === x ? '#fff' : colors.text }}>{x}</Text></Pressable>)}
+      </ScrollView>
+
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 10 }}>
         <View><Text style={{ fontFamily: colors.fontFamily, fontSize: 20, fontWeight: '900', color: colors.navy }}>All Courses</Text><Text style={{ fontFamily: colors.fontFamily, fontSize: 10, color: colors.muted, marginTop: 3 }}>Courses currently available to students</Text></View>
-        {(category || exam || search) && <Button title="Clear filters" variant="secondary" onPress={() => { setSearch(''); setCategory(''); setExam(''); }} />}
+        {(category || exam || subject || search) && <Button title="Clear filters" variant="secondary" onPress={() => { setSearch(''); setCategory(''); setExam(''); setSubject(''); }} />}
       </View>
 
       {filtered.length === 0 ? <Empty title="No courses found" message="Try another category, exam or search term." /> : (
