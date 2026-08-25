@@ -4,6 +4,18 @@ import { AppShell, Badge, Button, Card, Empty, ErrorState, Loading, ProgressBar 
 import { api } from '../../services/api';
 import { colors } from '../../theme';
 
+const courseVisual = (course) => {
+  const text = `${course?.name || course?.title || ''} ${course?.category || ''} ${course?.subject || ''}`.toLowerCase();
+  if (text.includes('java')) return { icon: '☕', label: 'JAVA', note: 'Programming' };
+  if (text.includes('python')) return { icon: '🐍', label: 'PYTHON', note: 'Programming' };
+  if (text.includes('english')) return { icon: '📘', label: 'ENGLISH', note: 'Language' };
+  if (text.includes('math')) return { icon: '∑', label: 'MATHS', note: 'Mathematics' };
+  if (text.includes('physics')) return { icon: '⚛️', label: 'PHYSICS', note: 'Science' };
+  if (text.includes('chemistry')) return { icon: '🧪', label: 'CHEMISTRY', note: 'Science' };
+  if (text.includes('biology')) return { icon: '🧬', label: 'BIOLOGY', note: 'Science' };
+  return { icon: '🎓', label: String(course?.category || 'COURSE').toUpperCase(), note: 'Smart Learning Lab' };
+};
+
 const tabs = [
   ['overview', '▣', 'Overview'],
   ['curriculum', '▤', 'Lessons'],
@@ -223,6 +235,7 @@ export default function StudentCourseScreen({ courseId, onBack, openQuiz, openLe
 
   const heroTitle = course.name || course.title || 'Course';
   const heroDescription = course.short_description || course.description || 'Learn through a structured curriculum with practical examples and assessments.';
+  const visual = courseVisual(course);
 
   return (
     <AppShell>
@@ -234,8 +247,9 @@ export default function StudentCourseScreen({ courseId, onBack, openQuiz, openLe
       <Card style={{ backgroundColor: '#32217B', borderColor: '#32217B', padding: mobile ? 16 : 22, overflow: 'hidden' }}>
         <View style={{ flexDirection: mobile ? 'column' : 'row', gap: 20 }}>
           <View style={{ width: mobile ? '100%' : 136, height: mobile ? 170 : 136, borderRadius: 15, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}>
-            <Text style={{ fontSize: 58 }}>☕</Text>
-            <Text style={{ fontFamily: colors.fontFamily, fontSize: 13, fontWeight: '900', color: '#C05B25', marginTop: 2 }}>JAVA</Text>
+            <Text style={{ fontSize: 58 }}>{visual.icon}</Text>
+            <Text style={{ fontFamily: colors.fontFamily, fontSize: 12, fontWeight: '900', color: '#5B42D9', marginTop: 3 }}>{visual.label}</Text>
+            <Text style={{ fontFamily: colors.fontFamily, fontSize: 8, color: '#7A7D96', marginTop: 2 }}>{visual.note}</Text>
           </View>
 
           <View style={{ flex: 1 }}>

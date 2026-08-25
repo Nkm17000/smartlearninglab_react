@@ -82,6 +82,8 @@ export default function StudentLessonScreen({
   courseId,
   onBack,
   onOpenLesson,
+  onNextLesson,
+  onPreviousLesson,
 }) {
   const [lesson, setLesson] = useState(null);
   const [progress, setProgress] = useState(null);
@@ -124,9 +126,23 @@ export default function StudentLessonScreen({
       ? orderedLessons[currentIndex + 1]
       : null;
 
-  const goToLesson = (target) => {
-    if (!target || busy || !onOpenLesson) return;
-    onOpenLesson(api.idOf(target), courseId);
+  const goToLesson = (target, direction) => {
+    if (!target || busy) return;
+    const targetId = api.idOf(target);
+    if (!targetId) return;
+
+    // AppNavigator historically exposed separate next/previous callbacks while
+    // this screen expected onOpenLesson. Support both contracts so navigation
+    // always changes the route and the new lesson performs its GET /lessons/:id.
+    if (direction === 'next' && onNextLesson) {
+      onNextLesson(targetId, courseId);
+      return;
+    }
+    if (direction === 'previous' && onPreviousLesson) {
+      onPreviousLesson(targetId, courseId);
+      return;
+    }
+    onOpenLesson?.(targetId, courseId);
   };
 
   const complete = async () => {
@@ -135,7 +151,7 @@ export default function StudentLessonScreen({
       await api.completeLesson(lessonId);
 
       if (nextLesson) {
-        goToLesson(nextLesson);
+        goToLesson(nextLesson, 'next');
         return;
       }
 
@@ -262,14 +278,14 @@ export default function StudentLessonScreen({
         <Button
           title="← Previous"
           variant="secondary"
-          onPress={() => goToLesson(previousLesson)}
+          onPress={() => goToLesson(previousLesson, 'previous')}
           disabled={!hasPrevious || busy}
         />
 
         <Button
           title={hasNext ? 'Next →' : '🎓 Course Complete'}
           variant={hasNext ? 'primary' : 'success'}
-          onPress={() => goToLesson(nextLesson)}
+          onPress={() => goToLesson(nextLesson, 'next')}
           disabled={!hasNext || busy}
         />
       </View>
@@ -490,7 +506,7 @@ export default function StudentLessonScreen({
             <Button
               title="← Previous"
               variant="secondary"
-              onPress={() => goToLesson(previousLesson)}
+              onPress={() => goToLesson(previousLesson, 'previous')}
               disabled={busy}
             />
           )}
@@ -498,7 +514,7 @@ export default function StudentLessonScreen({
             <Button
               title="Next →"
               variant="primary"
-              onPress={() => goToLesson(nextLesson)}
+              onPress={() => goToLesson(nextLesson, 'next')}
               disabled={busy}
             />
           )}

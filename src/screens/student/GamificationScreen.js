@@ -9,7 +9,7 @@ const GAMES = [
   { phase: 'Phase 1', icon: '⚡', title: 'Speed Quiz', slug: 'speed-quiz', tone: colors.cyanSoft, description: 'Answer quick-fire questions before the timer runs out.', meta: 'Timed • 60 seconds' },
   { phase: 'Phase 1', icon: '🃏', title: 'Flashcard Battle', slug: 'flashcard-battle', tone: colors.purpleSoft, description: 'Flip flashcards, recall the answer and build your score.', meta: 'Recall • 5 cards' },
   { phase: 'Phase 2', icon: '🧠', title: 'Match & Learn', slug: 'match-learn', tone: colors.greenSoft, description: 'Match learning concepts with the correct definitions or answers.', meta: 'Memory • 5 matches' },
-  { phase: 'Phase 2', icon: '🔤', title: 'Word Scramble', slug: 'word-scramble', tone: colors.pinkSoft, description: 'Unscramble important learning terms before time runs out.', meta: 'Vocabulary • 5 words' },
+  { phase: 'Phase 2', icon: '🔤', title: 'Word Scramble', slug: 'word-scramble', tone: colors.pinkSoft, description: 'Unscramble English spelling words and build vocabulary.', meta: 'English spelling • 5 words' },
   { phase: 'Phase 3', icon: '🐉', title: 'Boss Battle', slug: 'boss-battle', tone: '#F0EEFF', description: 'Face a final mixed challenge and earn a larger XP reward.', meta: 'Boss • 10 questions' },
 ];
 const phaseColors = { 'Phase 1': colors.primary, 'Phase 2': colors.purple, 'Phase 3': colors.navy };
@@ -65,6 +65,13 @@ export default function GamificationScreen() {
   const currentItem = session?.items?.[session?.current_index || 0];
   const total = Number(session?.total || session?.items?.length || 0);
   const currentNumber = Number(session?.current_index || 0) + 1;
+  const questionThemes = [
+    { bg: '#F3F0FF', border: '#DED7FF', icon: '🧠', label: 'Think it through' },
+    { bg: '#EEF8FF', border: '#D5E9FF', icon: '⚡', label: 'Quick recall' },
+    { bg: '#EEFBF5', border: '#D5F0E1', icon: '🎯', label: 'Stay focused' },
+    { bg: '#FFF6E9', border: '#F8E0B7', icon: '🔥', label: 'Keep the streak' },
+  ];
+  const questionTheme = questionThemes[(currentNumber - 1) % questionThemes.length];
 
   const submitAnswer = async (answer) => {
     if (!session || submitted || busy) return;
@@ -119,8 +126,13 @@ export default function GamificationScreen() {
           <Text style={{ fontFamily: colors.fontFamily, fontSize: 42, fontWeight: '900', color: colors.navy, marginTop: 12 }}>{result?.score || session.score || 0}</Text>
           <Text style={{ fontFamily: colors.fontFamily, color: colors.muted }}>Final score</Text>
           <View style={{ flexDirection: mobile ? 'column' : 'row', gap: 9, marginTop: 22, width: '100%' }}><Button title="Play Again" onPress={() => startGame(selectedGame)} style={{ flex: 1 }} /><Button title="Back to Games" variant="secondary" onPress={() => { setSession(null); setSelectedGame(null); }} style={{ flex: 1 }} /></View>
-        </Card> : currentItem ? <Card style={{ marginTop: 14 }}>
-          <Text style={{ fontFamily: colors.fontFamily, color: colors.muted, fontSize: 11 }}>Round {currentNumber} of {total}</Text>
+        </Card> : currentItem ? <Card style={{ marginTop: 14, padding: 0, overflow: 'hidden' }}>
+          <View style={{ padding: 15, backgroundColor: questionTheme.bg, borderBottomWidth: 1, borderBottomColor: questionTheme.border, flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+            <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}><Text style={{ fontSize: 20 }}>{questionTheme.icon}</Text></View>
+            <View style={{ flex: 1 }}><Text style={{ fontFamily: colors.fontFamily, color: colors.navy, fontSize: 12, fontWeight: '900' }}>{questionTheme.label}</Text><Text style={{ fontFamily: colors.fontFamily, color: colors.muted, fontSize: 9, marginTop: 2 }}>Round {currentNumber} of {total}</Text></View>
+            <Badge tone="purple">{Math.round((currentNumber - 1) / Math.max(1, total) * 100)}%</Badge>
+          </View>
+          <View style={{ padding: 18 }}>
           {session.game_type === 'flashcard' ? <>
             <Pressable onPress={() => setFlipped(v => !v)} style={{ marginTop: 13, minHeight: 250, borderRadius: 20, padding: 25, backgroundColor: flipped ? colors.purpleSoft : colors.orangeSoft, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: colors.border }}>
               <Text style={{ fontFamily: colors.fontFamily, fontSize: 10, fontWeight: '900', color: colors.primary, letterSpacing: 1 }}>{flipped ? 'ANSWER' : 'QUESTION'}</Text>
@@ -129,7 +141,7 @@ export default function GamificationScreen() {
             </Pressable>
             {flipped && <View style={{ marginTop: 15 }}><Text style={{ fontFamily: colors.fontFamily, fontWeight: '900', color: colors.navy, marginBottom: 9 }}>How well did you remember it?</Text><View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap' }}>{[['1','Again'],['3','Good'],['5','Easy']].map(([v,l]) => <Button key={v} title={`${v} • ${l}`} onPress={() => submitAnswer(Number(v))} disabled={busy} />)}</View></View>}
           </> : session.game_type === 'word_scramble' ? <>
-            <Text style={{ fontFamily: colors.fontFamily, fontSize: 24, fontWeight: '900', color: colors.navy, marginTop: 14 }}>Unscramble this word</Text>
+            <Text style={{ fontFamily: colors.fontFamily, fontSize: 24, fontWeight: '900', color: colors.navy, marginTop: 14 }}>Unscramble this English word</Text>
             <View style={{ padding: 20, borderRadius: 16, backgroundColor: colors.blueSoft, marginTop: 14, alignItems: 'center' }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 30, fontWeight: '900', color: colors.primary, letterSpacing: 3 }}>{currentItem.scrambled}</Text></View>
             <TextInput value={textAnswer} onChangeText={setTextAnswer} editable={!submitted} autoCapitalize="none" placeholder="Type the correct word" style={{ marginTop: 15, borderWidth: 1, borderColor: colors.border, borderRadius: 13, padding: 13, backgroundColor: '#fff', color: colors.text }} />
             {!submitted && <Button title="Check Answer" onPress={() => submitAnswer(textAnswer.trim())} disabled={busy || !textAnswer.trim()} style={{ marginTop: 10 }} />}
@@ -140,6 +152,7 @@ export default function GamificationScreen() {
 
           {submitted && !finished && <View style={{ marginTop: 14, padding: 13, borderRadius: 13, backgroundColor: result?.correct ? colors.greenSoft : colors.orangeSoft }}><Text style={{ fontFamily: colors.fontFamily, fontWeight: '900', color: result?.correct ? colors.success : colors.warning }}>{result?.correct ? 'Correct! +' : 'Not quite. '}{result?.total_xp ?? result?.xp_earned ?? 0} XP</Text>{result?.explanation && <Text style={{ fontFamily: colors.fontFamily, color: colors.muted, marginTop: 4, lineHeight: 18 }}>{result.explanation}</Text>}</View>}
           {submitted && !finished && <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 15 }}><Button title="Next →" onPress={next} /></View>}
+          </View>
         </Card> : null}
       </View>
     </AppShell>;
