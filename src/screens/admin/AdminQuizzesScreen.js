@@ -10,6 +10,7 @@ import {
   Field,
   Header,
   Loading,
+  DropdownSelect,
 } from '../../components/UI';
 import { api } from '../../services/api';
 import { colors } from '../../theme';
@@ -17,6 +18,13 @@ import { colors } from '../../theme';
 export default function AdminQuizzesScreen({ onCreateManual }) {
   const [items, setItems] = useState([]);
   const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('All');
+  const [subject, setSubject] = useState('All');
+  const [subcategory, setSubcategory] = useState('All');
+  const [status, setStatus] = useState('All');
+  const [quizType, setQuizType] = useState('All');
+  const [hasQuestions, setHasQuestions] = useState('All');
+  const [taxonomy, setTaxonomy] = useState({ categories: [], subjects: [] });
   const [loading, setLoading] = useState(true);
   const [busyId, setBusyId] = useState('');
   const [publishingAll, setPublishingAll] = useState(false);
@@ -37,27 +45,58 @@ export default function AdminQuizzesScreen({ onCreateManual }) {
 
   useEffect(() => {
     load();
+    api.adminTaxonomy().then((x) => setTaxonomy(x || {})).catch(() => {});
   }, []);
+
+  const categoryOptions = [
+    { value: 'All', label: 'All categories' },
+    ...((taxonomy.categories || taxonomy.allowed_categories || []).map((x) => ({
+      value: typeof x === 'string' ? x : x.name,
+      label: typeof x === 'string' ? x : x.name,
+    }))),
+  ];
+  const subjectOptions = [
+    { value: 'All', label: 'All subjects' },
+    ...((taxonomy.subjects || []).map((x) => ({ value: typeof x === 'string' ? x : x.name, label: typeof x === 'string' ? x : x.name }))),
+  ];
+
+  const selectedCategory = category === 'All' ? null : category;
+  const subcategoryOptions = useMemo(() => {
+    const out = [{ value: 'All', label: 'All subcategories' }];
+    if (!selectedCategory) return out;
+    const all = items.flatMap((q) => {
+      const pairs = Array.isArray(q.category_subcategory_map) ? q.category_subcategory_map : [];
+      const direct = Array.isArray(q.subcategories) ? q.subcategories : (q.subcategory ? [q.subcategory] : []);
+      const pair = pairs.find((x) => String(x.category || x.category_name || x.category_id) === String(selectedCategory));
+      return pair?.subcategories || direct;
+    });
+    return out.concat([...new Set(all.filter(Boolean).map(String))].sort((a,b)=>a.localeCompare(b)).map((x)=>({value:x,label:x})));
+  }, [items, selectedCategory]);
 
   const filtered = useMemo(() => {
     const value = search.trim().toLowerCase();
-    if (!value) return items;
-
+    const contains = (quiz, field, selected) => {
+      if (!selected || selected === 'All') return true;
+      const values = Array.isArray(quiz[field]) ? quiz[field] : [quiz[field]];
+      return values.filter(Boolean).some((v) => String(v).toLowerCase() === String(selected).toLowerCase());
+    };
     return items.filter((quiz) => {
-      const text = [
-        quiz.title,
-        quiz.name,
-        quiz.category,
-        quiz.description,
-        quiz.exam,
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLowerCase();
-
-      return text.includes(value);
+      const text = [quiz.title, quiz.name, quiz.category, quiz.categories, quiz.subcategory, quiz.subcategories, quiz.subject, quiz.description, quiz.exam, quiz.topic]
+        .flat().filter(Boolean).join(' ').toLowerCase();
+      if (value && !text.includes(value)) return false;
+      if (!contains(quiz, 'categories', category) && String(quiz.category || '').toLowerCase() !== category.toLowerCase()) return false;
+      if (!contains(quiz, 'subcategories', subcategory) && String(quiz.subcategory || '').toLowerCase() !== subcategory.toLowerCase()) return false;
+      if (subject !== 'All' && String(quiz.subject || '').toLowerCase() !== subject.toLowerCase()) return false;
+      if (status === 'Published' && quiz.is_published !== true) return false;
+      if (status === 'Unpublished' && quiz.is_published === true) return false;
+      if (quizType === 'Standalone' && quiz.course_id) return false;
+      if (quizType === 'Course' && !quiz.course_id) return false;
+      const count = Array.isArray(quiz.question_ids) ? quiz.question_ids.length : Number(quiz.question_count || 0);
+      if (hasQuestions === 'Ready' && count < 1) return false;
+      if (hasQuestions === 'Empty' && count > 0) return false;
+      return true;
     });
-  }, [items, search]);
+  }, [items, search, category, subject, subcategory, status, quizType, hasQuestions]);
 
   const togglePublish = async (quiz) => {
     const id = api.idOf(quiz);
@@ -208,6 +247,19 @@ export default function AdminQuizzesScreen({ onCreateManual }) {
         placeholder="Search by title, category, exam..."
       />
 
+      <Card>
+        <Text style={{ fontSize: 16, fontWeight: '900', color: colors.navy, marginBottom: 10 }}>Filters</Text>
+        <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+          <View style={{ flex: 1, minWidth: 210 }}><DropdownSelect label="Category" value={category} onChange={(v) => { setCategory(v); setSubcategory('All'); }} options={categoryOptions} /></View>
+          <View style={{ flex: 1, minWidth: 210 }}><DropdownSelect label="Subject" value={subject} onChange={setSubject} options={subjectOptions} /></View>
+          <View style={{ flex: 1, minWidth: 210 }}><DropdownSelect label="Subcategory" value={subcategory} onChange={setSubcategory} options={subcategoryOptions} /></View>
+          <View style={{ flex: 1, minWidth: 180 }}><DropdownSelect label="Status" value={status} onChange={setStatus} options={[{value:'All',label:'All statuses'},{value:'Published',label:'Published'},{value:'Unpublished',label:'Unpublished'}]} /></View>
+          <View style={{ flex: 1, minWidth: 180 }}><DropdownSelect label="Quiz type" value={quizType} onChange={setQuizType} options={[{value:'All',label:'All types'},{value:'Standalone',label:'Standalone'},{value:'Course',label:'Course quiz'}]} /></View>
+          <View style={{ flex: 1, minWidth: 180 }}><DropdownSelect label="Questions" value={hasQuestions} onChange={setHasQuestions} options={[{value:'All',label:'Any question state'},{value:'Ready',label:'Has questions'},{value:'Empty',label:'No questions'}]} /></View>
+        </View>
+        <View style={{ marginTop: 10 }}><Button title="Reset Filters" variant="secondary" onPress={() => { setSearch(''); setCategory('All'); setSubject('All'); setSubcategory('All'); setStatus('All'); setQuizType('All'); setHasQuestions('All'); }} /></View>
+      </Card>
+
       <View
         style={{
           flexDirection: 'row',
@@ -296,7 +348,11 @@ export default function AdminQuizzesScreen({ onCreateManual }) {
                     </Badge>
 
                     <Badge tone="purple">
-                      {quiz.category || 'General'}
+                      {Array.isArray(quiz.categories) ? quiz.categories.join(', ') : (quiz.category || 'General')}
+                    </Badge>
+
+                    <Badge tone="purple">
+                      {quiz.subject || 'Other'}
                     </Badge>
 
                     <Badge>

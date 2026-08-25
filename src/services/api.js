@@ -70,6 +70,38 @@ async function request(path, options = {}) {
   return data;
 }
 
+async function uploadRequest(path, formData) {
+  const token = await AsyncStorage.getItem(TOKEN_KEY);
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 120000);
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method: 'POST',
+      body: formData,
+      headers: {
+        Accept: 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error?.name === 'AbortError') throw new Error('Upload timed out. Check backend and storage.');
+    throw new Error(`Cannot reach backend at ${BASE_URL}. ${error?.message || ''}`);
+  } finally {
+    clearTimeout(timeout);
+  }
+  const raw = await response.text();
+  let data = null;
+  try { data = raw ? JSON.parse(raw) : null; } catch { data = raw; }
+  if (!response.ok) {
+    let message = data?.detail || data?.message || (typeof data === 'string' ? data : `Request failed (${response.status})`);
+    if (Array.isArray(message)) message = message.map((item) => item.msg || String(item)).join(', ');
+    throw new Error(message);
+  }
+  return data;
+}
+
 const idOf = (value) => String(value?._id ?? value?.id ?? '');
 
 const listOf = (value) =>
@@ -264,7 +296,11 @@ export const api = {
   adminSubcategories: (categoryId) =>
     request(`/admin/categories/${encodeURIComponent(categoryId)}/subcategories`),
 
-  quizzes: () => request('/admin/quizzes'),
+  quizzes: (params = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params).forEach(([k, v]) => { if (v && String(v).toLowerCase() !== 'all') q.set(k, String(v)); });
+    return request(`/admin/quizzes${q.toString() ? `?${q.toString()}` : ''}`);
+  },
 
   quiz: (id) => request(`/admin/quizzes/${id}`),
 
@@ -322,6 +358,37 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(body),
     }),
+
+  // Admin learning library and resources
+  adminLibrary: () => request('/admin/library'),
+  addLibraryLink: (body) => request('/admin/library', { method: 'POST', body: JSON.stringify(body) }),
+  deleteLibraryItem: (id) => request(`/admin/library/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  uploadLibraryFile: (file, meta = {}) => {
+    const form = new FormData();
+    form.append('file', { uri: file.uri, name: file.name || 'upload', type: file.type || 'application/octet-stream' });
+    Object.entries(meta).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) form.append(k, Array.isArray(v) ? v.join(',') : String(v));
+    });
+    return uploadRequest('/admin/library/upload', form);
+  },
+  studentLibrary: (category) => request(`/library${category && category !== 'All' ? `?category=${encodeURIComponent(category)}` : ''}`),
+  libraryCategories: () => request('/library/categories'),
+  downloadMediaUrl: (mediaId) => `${BASE_URL}/media/${encodeURIComponent(mediaId)}/download`,
+  courseResources: (id) => request(`/admin/courses/${encodeURIComponent(id)}/resources`),
+  uploadCourseResource: (id, file, meta = {}) => {
+    const form = new FormData();
+    form.append('file', { uri: file.uri, name: file.name || 'upload', type: file.type || 'application/octet-stream' });
+    Object.entries(meta).forEach(([k, v]) => { if (v !== undefined && v !== null) form.append(k, String(v)); });
+    return uploadRequest(`/admin/courses/${encodeURIComponent(id)}/resources/upload`, form);
+  },
+  addCourseResource: (id, body) => request(`/admin/courses/${encodeURIComponent(id)}/resources`, { method: 'POST', body: JSON.stringify(body) }),
+  deleteCourseResource: (id, resourceId) => request(`/admin/courses/${encodeURIComponent(id)}/resources/${encodeURIComponent(resourceId)}`, { method: 'DELETE' }),
+  uploadLessonResource: (id, file, meta = {}) => {
+    const form = new FormData();
+    form.append('file', { uri: file.uri, name: file.name || 'upload', type: file.type || 'application/octet-stream' });
+    Object.entries(meta).forEach(([k, v]) => { if (v !== undefined && v !== null) form.append(k, String(v)); });
+    return uploadRequest(`/admin/lessons/${encodeURIComponent(id)}/resources/upload`, form);
+  },
 
   // Admin students
   students: () => request('/admin/students'),
