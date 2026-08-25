@@ -2113,8 +2113,8 @@ export const api = {
       }
     ),
 
-  bulkQuizFile: file =>
-    upload('/admin/bulk/quiz-file', file),
+  bulkQuizFile: (file, fields = {}) =>
+    upload('/admin/bulk/quiz-file', file, fields),
 
   bulkCoursePdf: (
     file,
