@@ -984,8 +984,16 @@ export const api = {
   adminDashboard: () =>
     request('/admin/dashboard'),
 
-  courses: () =>
-    request('/admin/courses'),
+  courses: (params = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value) !== '' && String(value).toLowerCase() !== 'all') {
+        q.set(key, String(value));
+      }
+    });
+    const suffix = q.toString() ? `?${q.toString()}` : '';
+    return request(`/admin/courses${suffix}`);
+  },
 
   course: id =>
     request(`/admin/courses/${id}`),
@@ -1009,6 +1017,9 @@ export const api = {
 
   courseCategories: () =>
     request('/admin/course-categories'),
+
+  quizCategories: () =>
+    request('/admin/quiz-categories'),
 
   courseResources: id =>
     request(
@@ -1204,8 +1215,16 @@ export const api = {
       }
     ),
 
-  quizzes: () =>
-    request('/admin/quizzes'),
+  quizzes: (params = {}) => {
+    const q = new URLSearchParams();
+    Object.entries(params || {}).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && String(value) !== '' && String(value).toLowerCase() !== 'all') {
+        q.set(key, String(value));
+      }
+    });
+    const suffix = q.toString() ? `?${q.toString()}` : '';
+    return request(`/admin/quizzes${suffix}`);
+  },
 
   quiz: id =>
     request(`/admin/quizzes/${id}`),
