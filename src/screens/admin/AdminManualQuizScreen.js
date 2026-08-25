@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Text, View } from 'react-native';
 import {
   AppShell,
@@ -37,6 +37,48 @@ export default function AdminManualQuizScreen({ onBack }) {
   });
   const [questions, setQuestions] = useState(initialQuestions);
   const [saving, setSaving] = useState(false);
+  const [taxonomy, setTaxonomy] = useState([]);
+  const [selectedCategories, setSelectedCategories] = useState([]);
+  const [selectedSubcategories, setSelectedSubcategories] = useState([]);
+  const [taxonomyLoading, setTaxonomyLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+    api.adminTaxonomy()
+      .then((response) => {
+        if (!active) return;
+        const rows = Array.isArray(response) ? response : response?.categories || [];
+        setTaxonomy(rows);
+      })
+      .catch((e) => {
+        if (active) Alert.alert('Category setup', e?.message || 'Unable to load categories.');
+      })
+      .finally(() => {
+        if (active) setTaxonomyLoading(false);
+      });
+    return () => { active = false; };
+  }, []);
+
+  const toggleCategory = (categoryId) => {
+    setSelectedCategories((current) => {
+      const exists = current.includes(categoryId);
+      if (exists) {
+        const category = taxonomy.find((x) => String(x.id) === String(categoryId));
+        const childIds = (category?.subcategories || []).map((x) => String(x.id));
+        setSelectedSubcategories((subs) => subs.filter((id) => !childIds.includes(String(id))));
+        return current.filter((id) => id !== categoryId);
+      }
+      return [...current, categoryId];
+    });
+  };
+
+  const toggleSubcategory = (subcategoryId) => {
+    setSelectedSubcategories((current) =>
+      current.includes(subcategoryId)
+        ? current.filter((id) => id !== subcategoryId)
+        : [...current, subcategoryId]
+    );
+  };
 
   const completedQuestions = useMemo(
     () => questions.filter((q) => q.question.trim()).length,
@@ -64,6 +106,17 @@ export default function AdminManualQuizScreen({ onBack }) {
     if (!quiz.title.trim()) return 'Quiz title is required.';
     if (!quiz.subject.trim()) return 'Subject is required.';
     if (!quiz.topic.trim()) return 'Topic is required.';
+    if (!selectedCategories.length) return 'Select at least one category.';
+    if (!selectedSubcategories.length) return 'Select at least one subcategory.';
+
+    const validSelectedSubcategories = new Set(
+      taxonomy
+        .filter((cat) => selectedCategories.includes(cat.id))
+        .flatMap((cat) => (cat.subcategories || []).map((sub) => sub.id))
+    );
+    if (selectedSubcategories.some((id) => !validSelectedSubcategories.has(id))) {
+      return 'Every selected subcategory must belong to a selected category.';
+    }
 
     for (let i = 0; i < questions.length; i += 1) {
       const q = questions[i];
@@ -92,6 +145,8 @@ export default function AdminManualQuizScreen({ onBack }) {
         duration_minutes: Number(quiz.duration_minutes) || 15,
         passing_percentage: Number(quiz.passing_percentage) || 60,
         max_attempts: Number(quiz.max_attempts) || 3,
+        category_ids: selectedCategories,
+        subcategory_ids: selectedSubcategories,
         questions: questions.map((q) => ({
           ...q,
           correct_answer: Number(q.correct_answer),
@@ -166,15 +221,48 @@ export default function AdminManualQuizScreen({ onBack }) {
               placeholder="Noun"
             />
           </View>
-          <View style={{ flex: 1, minWidth: 220 }}>
-            <Field
-              label="Exam category"
-              value={quiz.exam}
-              onChangeText={(value) => setQuiz({ ...quiz, exam: value })}
-              placeholder="SSC / Banking / Railway"
-            />
-          </View>
         </View>
+        <Text style={{ fontSize: 16, fontWeight: '900', color: colors.navy, marginTop: 4 }}>
+          Categories & Subcategories
+        </Text>
+        <Text style={{ color: colors.muted, marginTop: 3, marginBottom: 8 }}>
+          Select one or more categories. Only subcategories belonging to selected categories are shown.
+        </Text>
+        {taxonomyLoading ? (
+          <Text style={{ color: colors.muted, marginBottom: 12 }}>Loading categories...</Text>
+        ) : (
+          <View style={{ gap: 12, marginBottom: 14 }}>
+            {taxonomy.map((category) => {
+              const selected = selectedCategories.includes(category.id);
+              const visibleSubs = selected ? (category.subcategories || []) : [];
+              return (
+                <Card key={category.id} style={{ backgroundColor: selected ? '#EEF6FF' : '#FFFFFF', borderColor: selected ? colors.blue : colors.border }}>
+                  <Button
+                    title={`${selected ? '✓ ' : ''}${category.name}`}
+                    variant={selected ? 'primary' : 'secondary'}
+                    onPress={() => toggleCategory(category.id)}
+                  />
+                  {selected && visibleSubs.length > 0 && (
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10 }}>
+                      {visibleSubs.map((sub) => {
+                        const subSelected = selectedSubcategories.includes(sub.id);
+                        return (
+                          <Button
+                            key={sub.id}
+                            title={`${subSelected ? '✓ ' : ''}${sub.name}`}
+                            variant={subSelected ? 'primary' : 'secondary'}
+                            onPress={() => toggleSubcategory(sub.id)}
+                          />
+                        );
+                      })}
+                    </View>
+                  )}
+                </Card>
+              );
+            })}
+          </View>
+        )}
+
         <Field
           label="Description"
           value={quiz.description}

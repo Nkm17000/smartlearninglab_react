@@ -259,6 +259,11 @@ export const api = {
     }),
 
   // Admin quizzes
+  adminTaxonomy: () => request('/admin/taxonomy'),
+
+  adminSubcategories: (categoryId) =>
+    request(`/admin/categories/${encodeURIComponent(categoryId)}/subcategories`),
+
   quizzes: () => request('/admin/quizzes'),
 
   quiz: (id) => request(`/admin/quizzes/${id}`),
