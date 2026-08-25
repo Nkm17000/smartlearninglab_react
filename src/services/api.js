@@ -394,35 +394,22 @@ export const api = {
     }),
 
   // Admin learning library and resources
+  BASE_URL,
   adminLibrary: () => request('/admin/library'),
   addLibraryLink: (body) => request('/admin/library', { method: 'POST', body: JSON.stringify(body) }),
   deleteLibraryItem: (id) => request(`/admin/library/${encodeURIComponent(id)}`, { method: 'DELETE' }),
-  uploadLibraryFile: (file, meta = {}) => {
-    const form = new FormData();
-    form.append('file', { uri: file.uri, name: file.name || 'upload', type: file.type || 'application/octet-stream' });
-    Object.entries(meta).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) form.append(k, Array.isArray(v) ? v.join(',') : String(v));
-    });
-    return uploadRequest('/admin/library/upload', form);
-  },
+  uploadLibraryFile: (file, meta = {}) =>
+    uploadFile('/admin/library/upload', file, meta),
   studentLibrary: (category) => request(`/library${category && category !== 'All' ? `?category=${encodeURIComponent(category)}` : ''}`),
   libraryCategories: () => request('/library/categories'),
   downloadMediaUrl: (mediaId) => `${BASE_URL}/media/${encodeURIComponent(mediaId)}/download`,
   courseResources: (id) => request(`/admin/courses/${encodeURIComponent(id)}/resources`),
-  uploadCourseResource: (id, file, meta = {}) => {
-    const form = new FormData();
-    form.append('file', { uri: file.uri, name: file.name || 'upload', type: file.type || 'application/octet-stream' });
-    Object.entries(meta).forEach(([k, v]) => { if (v !== undefined && v !== null) form.append(k, String(v)); });
-    return uploadRequest(`/admin/courses/${encodeURIComponent(id)}/resources/upload`, form);
-  },
+  uploadCourseResource: (id, file, meta = {}) =>
+    uploadFile(`/admin/courses/${encodeURIComponent(id)}/resources/upload`, file, meta),
   addCourseResource: (id, body) => request(`/admin/courses/${encodeURIComponent(id)}/resources`, { method: 'POST', body: JSON.stringify(body) }),
   deleteCourseResource: (id, resourceId) => request(`/admin/courses/${encodeURIComponent(id)}/resources/${encodeURIComponent(resourceId)}`, { method: 'DELETE' }),
-  uploadLessonResource: (id, file, meta = {}) => {
-    const form = new FormData();
-    form.append('file', { uri: file.uri, name: file.name || 'upload', type: file.type || 'application/octet-stream' });
-    Object.entries(meta).forEach(([k, v]) => { if (v !== undefined && v !== null) form.append(k, String(v)); });
-    return uploadRequest(`/admin/lessons/${encodeURIComponent(id)}/resources/upload`, form);
-  },
+  uploadLessonResource: (id, file, meta = {}) =>
+    uploadFile(`/admin/lessons/${encodeURIComponent(id)}/resources/upload`, file, meta),
 
   // Admin students
   students: () => request('/admin/students'),
