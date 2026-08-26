@@ -100,6 +100,130 @@ function taxonomyFields(taxonomy, categoryIds, subcategoryIds) {
   return {category_ids: categoryIds, categories, subcategory_ids: subcategoryIds, subcategories};
 }
 
+
+const LARGE_JSON_WORKER = `
+  const asQuizList = (value) => {
+    if (Array.isArray(value)) return value;
+    if (value && Array.isArray(value.quizzes)) return value.quizzes;
+    if (value && typeof value === 'object') return [value];
+    return [];
+  };
+
+  self.onmessage = async (event) => {
+    const data = event.data || {};
+    try {
+      if (data.type === 'analyze') {
+        const source = data.file ? await data.file.text() : data.text;
+        const parsed = JSON.parse(source);
+        const quizzes = asQuizList(parsed);
+        const questions = quizzes.reduce((n, x) => n + (Array.isArray(x?.questions) ? x.questions.length : 0), 0);
+        self.postMessage({ type: 'analysis', count: quizzes.length, questions });
+        self.close();
+        return;
+      }
+
+      if (data.type === 'start') {
+        const source = data.file ? await data.file.text() : data.text;
+        const parsed = JSON.parse(source);
+        const quizzes = asQuizList(parsed);
+        const batchSize = 50;
+        const totalBatches = Math.ceil(quizzes.length / batchSize);
+        self.__quizzes = quizzes;
+        self.__batchSize = batchSize;
+        self.__next = 0;
+        self.postMessage({ type: 'meta', count: quizzes.length, questions: quizzes.reduce((n, x) => n + (Array.isArray(x?.questions) ? x.questions.length : 0), 0), totalBatches });
+        self.postMessage({ type: 'batch', batchNumber: 1, totalBatches, offset: 0, total: quizzes.length, batch: quizzes.slice(0, batchSize) });
+        return;
+      }
+
+      if (data.type === 'next') {
+        const quizzes = self.__quizzes || [];
+        const batchSize = self.__batchSize || 50;
+        self.__next = (self.__next || 0) + 1;
+        const offset = self.__next * batchSize;
+        if (offset >= quizzes.length) {
+          self.postMessage({ type: 'done' });
+          self.close();
+          return;
+        }
+        self.postMessage({
+          type: 'batch',
+          batchNumber: Math.floor(offset / batchSize) + 1,
+          totalBatches: Math.ceil(quizzes.length / batchSize),
+          offset,
+          total: quizzes.length,
+          batch: quizzes.slice(offset, offset + batchSize),
+        });
+      }
+    } catch (error) {
+      self.postMessage({ type: 'error', message: error?.message || 'Invalid JSON file.' });
+      self.close();
+    }
+  };
+`;
+
+function createQuizWorker() {
+  if (Platform.OS !== 'web' || typeof Worker === 'undefined' || typeof Blob === 'undefined' || typeof URL === 'undefined') return null;
+  const blob = new Blob([LARGE_JSON_WORKER], {type: 'application/javascript'});
+  const url = URL.createObjectURL(blob);
+  const worker = new Worker(url);
+  worker.__cleanup = () => {
+    worker.terminate();
+    URL.revokeObjectURL(url);
+  };
+  return worker;
+}
+
+function validateQuizBatch(quizzes, sourceOffset = 0) {
+  const valid = [];
+  const failures = [];
+  const titles = new Set();
+  quizzes.forEach((quiz, index) => {
+    const sourceIndex = sourceOffset + index + 1;
+    try {
+      if (!quiz || typeof quiz !== 'object' || Array.isArray(quiz)) throw new Error('Quiz must be a JSON object.');
+      const title = String(quiz.title || quiz.name || '').trim();
+      if (!title) throw new Error('title is required.');
+      const titleKey = title.toLowerCase();
+      if (titles.has(titleKey)) throw new Error(`duplicate title '${title}'.`);
+      titles.add(titleKey);
+      if (!Array.isArray(quiz.questions) || quiz.questions.length < 1) throw new Error('questions must contain at least one question.');
+      quiz.questions.forEach((q, qi) => {
+        if (!q || typeof q !== 'object') throw new Error(`question ${qi + 1} is invalid.`);
+        if (!String(q.question || '').trim()) throw new Error(`question ${qi + 1}: question text is empty.`);
+        if (!Array.isArray(q.options) || q.options.length !== 4) throw new Error(`question ${qi + 1}: exactly four options are required.`);
+        if (q.options.some(x => !String(x).trim())) throw new Error(`question ${qi + 1}: options cannot be empty.`);
+        const normalized = q.options.map(x => String(x).trim().toLowerCase());
+        if (new Set(normalized).size !== normalized.length) throw new Error(`question ${qi + 1}: duplicate options are not allowed.`);
+        const correct = resolveCorrectAnswer(q.correct_answer ?? q.answer, q.options);
+        if (!Number.isInteger(correct) || correct < 0 || correct >= 4) throw new Error(`question ${qi + 1}: correct_answer must be 0–3, A/B/C/D, or an exact option.`);
+      });
+      valid.push({...quiz, _bulk_source_index: sourceIndex});
+    } catch (error) {
+      failures.push({source_index: sourceIndex, title: String(quiz?.title || quiz?.name || ''), error: error.message || 'Invalid quiz.'});
+    }
+  });
+  return {valid, failures};
+}
+
+async function analyzeQuizFileInWorker(source) {
+  const worker = createQuizWorker();
+  if (!worker) {
+    const text = typeof source === 'string' ? source : await readPickedFile(source);
+    const parsed = JSON.parse(text);
+    const list = asQuizList(parsed);
+    return {count: list.length, questions: list.reduce((n, x) => n + (x?.questions?.length || 0), 0)};
+  }
+  return new Promise((resolve, reject) => {
+    worker.onmessage = (event) => {
+      if (event.data?.type === 'analysis') { worker.__cleanup(); resolve(event.data); }
+      else if (event.data?.type === 'error') { worker.__cleanup(); reject(new Error(event.data.message)); }
+    };
+    worker.onerror = (event) => { worker.__cleanup(); reject(new Error(event.message || 'Unable to analyze JSON file.')); };
+    worker.postMessage(source?.file ? {type: 'analyze', file: source.file} : {type: 'analyze', text: source});
+  });
+}
+
 export default function AdminBulkContentScreen({onBack}) {
   const [tab, setTab] = useState('quiz');
   const [taxonomy, setTaxonomy] = useState([]);
@@ -114,6 +238,7 @@ export default function AdminBulkContentScreen({onBack}) {
   const [language, setLanguage] = useState('English');
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);
+  const [filePreview, setFilePreview] = useState(null);
 
   useEffect(() => {
     api.adminTaxonomy()
@@ -154,11 +279,18 @@ export default function AdminBulkContentScreen({onBack}) {
       const selected = await pickFile({accept: 'application/json,.json,text/plain', multiple: false});
       if (!selected) return;
       setQuizFile(selected);
-      const text = await readPickedFile(selected);
-      JSON.parse(text);
-      setQuizJson(text);
       setResult(null);
+      setFilePreview({name: selected.name, size: Number(selected.size || 0), analyzing: true});
+      const analysis = await analyzeQuizFileInWorker(selected.file ? selected : await readPickedFile(selected));
+      setFilePreview({name: selected.name, size: Number(selected.size || 0), count: analysis.count, questions: analysis.questions, analyzing: false});
+      // Never put a large uploaded JSON file into the TextInput. The TextInput
+      // is only an editor for the small sample/manual payload.
+      if (Number(selected.size || text.length || 0) <= 512 * 1024) {
+        setQuizJson(text);
+      }
     } catch (e) {
+      setQuizFile(null);
+      setFilePreview(null);
       Alert.alert('JSON file', e.message || 'Unable to read the selected JSON file.');
     }
   };
@@ -167,6 +299,10 @@ export default function AdminBulkContentScreen({onBack}) {
     if (!quizFile) return;
     try {
       const text = await readPickedFile(quizFile);
+      if (Number(quizFile.size || text.length || 0) > 512 * 1024) {
+        Alert.alert('Large JSON', 'This file is large, so it will not be loaded into the editor. Use Upload JSON & Create to process it safely in 50-quiz batches.');
+        return;
+      }
       JSON.parse(text);
       setQuizJson(text);
       setResult(null);
@@ -183,93 +319,128 @@ export default function AdminBulkContentScreen({onBack}) {
     }
   };
 
-  const processQuizBatches = async (parsed, source = 'editor') => {
+  const processQuizListBatches = async (quizzes, source = 'editor', preFailures = []) => {
     if (!ready) throw new Error('Select at least one category and one subcategory before uploading quizzes.');
-    const quizzes = validateQuizPayload(parsed);
+    if (!Array.isArray(quizzes) || !quizzes.length) throw new Error('No quizzes were found in the JSON file.');
+
     const batchSize = 50;
     const totalBatches = Math.ceil(quizzes.length / batchSize);
     const bulkUploadId = `quiz-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const batches = [];
     let created = 0;
     let skipped = 0;
-    let failed = 0;
+    let failed = preFailures.length;
     let questions = 0;
 
     for (let offset = 0; offset < quizzes.length; offset += batchSize) {
       const batchNumber = Math.floor(offset / batchSize) + 1;
-      const batch = quizzes.slice(offset, offset + batchSize).map((quiz, index) => ({
-        ...quiz,
-        _bulk_source_index: offset + index + 1,
-      }));
+      const rawBatch = quizzes.slice(offset, offset + batchSize);
+      const checked = validateQuizBatch(rawBatch, offset);
+      const batch = checked.valid;
+      const localFailures = [...checked.failures];
 
-      setResult({
-        kind: 'quiz',
-        status: 'processing',
-        source,
-        total_quizzes: quizzes.length,
-        total_batches: totalBatches,
-        current_batch: batchNumber,
-        processed_quizzes: offset,
-        created_count: created,
-        skipped_count: skipped,
-        failed_count: failed,
-        question_count: questions,
-        batches: [...batches],
-        message: `Processing batch ${batchNumber} of ${totalBatches}…`,
-      });
+      setResult({kind: 'quiz', status: 'processing', source, total_quizzes: quizzes.length, total_batches: totalBatches, current_batch: batchNumber, processed_quizzes: offset, created_count: created, skipped_count: skipped, failed_count: failed, question_count: questions, batches: [...batches], message: `Processing batch ${batchNumber} of ${totalBatches}…`});
 
-      try {
-        const response = await api.bulkQuizBatch({
-          ...selection,
-          bulk_upload_id: bulkUploadId,
-          quizzes: batch,
-        });
-        created += Number(response.created_count || 0);
-        skipped += Number(response.skipped_count || 0);
-        failed += Number(response.failed_count || 0);
-        questions += Number(response.question_count || 0);
-        batches.push({
-          batch: batchNumber,
-          size: batch.length,
-          created: Number(response.created_count || 0),
-          skipped: Number(response.skipped_count || 0),
-          failed: Number(response.failed_count || 0),
-          failures: response.failed_quizzes || [],
-          status: 'completed',
-        });
-      } catch (e) {
-        failed += batch.length;
-        batches.push({
-          batch: batchNumber,
-          size: batch.length,
-          created: 0,
-          skipped: 0,
-          failed: batch.length,
-          failures: [{error: e.message || 'Batch request failed.'}],
-          status: 'failed',
-        });
+      if (batch.length) {
+        try {
+          const response = await api.bulkQuizBatch({...selection, bulk_upload_id: bulkUploadId, quizzes: batch});
+          created += Number(response.created_count || 0);
+          skipped += Number(response.skipped_count || 0);
+          failed += Number(response.failed_count || 0) + localFailures.length;
+          questions += Number(response.question_count || 0);
+          batches.push({batch: batchNumber, size: rawBatch.length, sent: batch.length, created: Number(response.created_count || 0), skipped: Number(response.skipped_count || 0), failed: Number(response.failed_count || 0) + localFailures.length, failures: [...localFailures, ...(response.failed_quizzes || [])], status: 'completed'});
+        } catch (e) {
+          failed += batch.length + localFailures.length;
+          batches.push({batch: batchNumber, size: rawBatch.length, sent: batch.length, created: 0, skipped: 0, failed: batch.length + localFailures.length, failures: [...localFailures, {error: e.message || 'Batch request failed.'}], status: 'failed'});
+        }
+      } else {
+        failed += localFailures.length;
+        batches.push({batch: batchNumber, size: rawBatch.length, sent: 0, created: 0, skipped: 0, failed: localFailures.length, failures: localFailures, status: 'completed'});
       }
 
-      setResult({
-        kind: 'quiz',
-        status: batchNumber === totalBatches ? 'completed' : 'processing',
-        source,
-        total_quizzes: quizzes.length,
-        total_batches: totalBatches,
-        current_batch: batchNumber,
-        processed_quizzes: Math.min(offset + batch.length, quizzes.length),
-        created_count: created,
-        skipped_count: skipped,
-        failed_count: failed,
-        question_count: questions,
-        batches: [...batches],
-        message: batchNumber === totalBatches
-          ? `Upload completed: ${created} created, ${skipped} skipped, ${failed} failed.`
-          : `Batch ${batchNumber} of ${totalBatches} completed. Starting the next batch…`,
-      });
+      const processed = Math.min(offset + rawBatch.length, quizzes.length);
+      setResult({kind: 'quiz', status: processed === quizzes.length ? 'completed' : 'processing', source, total_quizzes: quizzes.length, total_batches: totalBatches, current_batch: batchNumber, processed_quizzes: processed, created_count: created, skipped_count: skipped, failed_count: failed, question_count: questions, batches: [...batches], message: processed === quizzes.length ? `Upload completed: ${created} created, ${skipped} skipped, ${failed} failed.` : `Batch ${batchNumber} of ${totalBatches} completed. Starting the next batch…`});
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+    return {created, skipped, failed, questions, total: quizzes.length, totalBatches, batches};
+  };
+
+  const processQuizFileInWorker = async (source) => {
+    if (Platform.OS !== 'web' || typeof Worker === 'undefined') {
+      const text = typeof source === 'string' ? source : await readPickedFile(source);
+      const parsed = JSON.parse(text);
+      return processQuizListBatches(asQuizList(parsed), 'file');
     }
 
-    return {created, skipped, failed, questions, total: quizzes.length, totalBatches, batches};
+    if (!ready) throw new Error('Select at least one category and one subcategory before uploading quizzes.');
+    const worker = createQuizWorker();
+    if (!worker) {
+      const text = typeof source === 'string' ? source : await readPickedFile(source);
+      const parsed = JSON.parse(text);
+      return processQuizListBatches(asQuizList(parsed), 'file');
+    }
+
+    const bulkUploadId = `quiz-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const batches = [];
+    let created = 0, skipped = 0, failed = 0, questions = 0, total = 0, totalBatches = 0;
+
+    const finish = () => worker.__cleanup();
+    const sendNext = () => worker.postMessage({type: 'next'});
+
+    return new Promise((resolve, reject) => {
+      worker.onmessage = async (event) => {
+        const data = event.data || {};
+        try {
+          if (data.type === 'meta') {
+            total = data.count;
+            totalBatches = data.totalBatches;
+            setFilePreview(prev => ({...(prev || {}), count: data.count, questions: data.questions, analyzing: false}));
+            if (!total) throw new Error('No quizzes were found in the JSON file.');
+            return;
+          }
+          if (data.type === 'batch') {
+            const batchNumber = data.batchNumber;
+            const rawBatch = Array.isArray(data.batch) ? data.batch : [];
+            const checked = validateQuizBatch(rawBatch, data.offset || 0);
+            setResult({kind: 'quiz', status: 'processing', source: 'file', total_quizzes: total || data.total, total_batches: totalBatches || data.totalBatches, current_batch: batchNumber, processed_quizzes: data.offset || 0, created_count: created, skipped_count: skipped, failed_count: failed, question_count: questions, batches: [...batches], message: `Processing batch ${batchNumber} of ${totalBatches || data.totalBatches}…`});
+            let batchResult = {created: 0, skipped: 0, failed: checked.failures.length, question_count: 0, failed_quizzes: checked.failures};
+            if (checked.valid.length) {
+              try {
+                const response = await api.bulkQuizBatch({...selection, bulk_upload_id: bulkUploadId, quizzes: checked.valid});
+                batchResult = {created: Number(response.created_count || 0), skipped: Number(response.skipped_count || 0), failed: Number(response.failed_count || 0) + checked.failures.length, question_count: Number(response.question_count || 0), failed_quizzes: [...checked.failures, ...(response.failed_quizzes || [])]};
+              } catch (error) {
+                batchResult.failed = checked.valid.length + checked.failures.length;
+                batchResult.failed_quizzes = [...checked.failures, {error: error.message || 'Batch request failed.'}];
+              }
+            }
+            created += batchResult.created;
+            skipped += batchResult.skipped;
+            failed += batchResult.failed;
+            questions += batchResult.question_count;
+            batches.push({batch: batchNumber, size: rawBatch.length, sent: checked.valid.length, created: batchResult.created, skipped: batchResult.skipped, failed: batchResult.failed, failures: batchResult.failed_quizzes || [], status: 'completed'});
+            const processed = Math.min((data.offset || 0) + rawBatch.length, total || data.total);
+            setResult({kind: 'quiz', status: processed >= (total || data.total) ? 'completed' : 'processing', source: 'file', total_quizzes: total || data.total, total_batches: totalBatches || data.totalBatches, current_batch: batchNumber, processed_quizzes: processed, created_count: created, skipped_count: skipped, failed_count: failed, question_count: questions, batches: [...batches], message: processed >= (total || data.total) ? `Upload completed: ${created} created, ${skipped} skipped, ${failed} failed.` : `Batch ${batchNumber} of ${totalBatches || data.totalBatches} completed. Starting the next batch…`});
+            await new Promise(r => setTimeout(r, 0));
+            sendNext();
+            return;
+          }
+          if (data.type === 'done') {
+            finish();
+            resolve({created, skipped, failed, questions, total, totalBatches, batches});
+            return;
+          }
+          if (data.type === 'error') {
+            finish();
+            reject(new Error(data.message || 'Invalid JSON file.'));
+          }
+        } catch (error) {
+          finish();
+          reject(error);
+        }
+      };
+      worker.onerror = (event) => { finish(); reject(new Error(event.message || 'Large JSON processing failed.')); };
+      worker.postMessage(source?.file ? {type: 'start', file: source.file, batchSize: 50} : {type: 'start', text: source, batchSize: 50});
+    });
   };
 
   const createQuiz = async () => {
@@ -277,7 +448,7 @@ export default function AdminBulkContentScreen({onBack}) {
       setBusy(true);
       setResult(null);
       const parsed = JSON.parse(quizJson);
-      const summary = await processQuizBatches(parsed, 'editor');
+      const summary = await processQuizListBatches(asQuizList(parsed), 'editor');
       Alert.alert(
         'Bulk quiz upload completed',
         `${summary.created} created · ${summary.skipped} skipped · ${summary.failed} failed`,
@@ -295,14 +466,8 @@ export default function AdminBulkContentScreen({onBack}) {
       setBusy(true);
       setResult(null);
       if (!quizFile) throw new Error('Choose a JSON file first.');
-      const text = await readPickedFile(quizFile);
-      setQuizJson(text);
-      const parsed = JSON.parse(text);
-      const summary = await processQuizBatches(parsed, 'file');
-      Alert.alert(
-        'JSON upload completed',
-        `${summary.created} created · ${summary.skipped} skipped · ${summary.failed} failed`,
-      );
+      const summary = await processQuizFileInWorker(quizFile);
+      Alert.alert('JSON upload completed', `${summary.created} created · ${summary.skipped} skipped · ${summary.failed} failed`);
     } catch (e) {
       setResult({kind: 'quiz', status: 'failed', message: e.message || 'Unable to upload quiz JSON.'});
       Alert.alert('JSON upload', e.message || 'Unable to upload quiz JSON.');
@@ -378,12 +543,27 @@ export default function AdminBulkContentScreen({onBack}) {
               {quizFile && <Button title="Reload selected JSON" variant="secondary" onPress={loadQuiz} disabled={busy} />}
               {quizFile && <Badge tone="green">{quizFile.name}</Badge>}
             </View>
-            <Field label="Quiz JSON" value={quizJson} onChangeText={setQuizJson} multiline />
+            {quizFile ? (
+              <Card style={{backgroundColor: '#F8F9FD', borderColor: colors.border, marginTop: 10}}>
+                <Text style={{fontWeight: '900', color: colors.navy}}>✓ JSON file selected</Text>
+                <Text style={{color: colors.muted, marginTop: 5}}>{quizFile.name}</Text>
+                <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 10}}>
+                  <Badge tone="blue">{filePreview?.analyzing ? 'Analyzing…' : `${filePreview?.count ?? '—'} quizzes`}</Badge>
+                  <Badge tone="blue">{filePreview?.analyzing ? '…' : `${filePreview?.questions ?? '—'} questions`}</Badge>
+                  <Badge tone="orange">{Math.max(0, Math.round(Number(quizFile.size || 0) / 1024 / 1024 * 10) / 10)} MB</Badge>
+                </View>
+                <Text style={{color: colors.muted, fontSize: 11, lineHeight: 17, marginTop: 9}}>
+                  Large JSON files are processed outside the UI and uploaded in batches of 50. The full JSON is never rendered inside the text editor, preventing the browser from freezing.
+                </Text>
+              </Card>
+            ) : (
+              <Field label="Quiz JSON" value={quizJson} onChangeText={setQuizJson} multiline />
+            )}
             <View style={{flexDirection: 'row', gap: 8, flexWrap: 'wrap'}}>
               <Button title={busy ? 'Processing…' : 'Create Quiz Drafts'} onPress={createQuiz} disabled={busy || !ready} />
               <Button title={busy ? 'Uploading…' : 'Upload JSON & Create'} variant="secondary" onPress={uploadQuiz} disabled={busy || !quizFile || !ready} />
-              <Button title="Reset Sample" variant="secondary" onPress={() => setQuizJson(JSON.stringify(SAMPLE_MULTI, null, 2))} />
-              <Badge tone={preview.error ? 'red' : 'blue'}>{preview.error ? 'Invalid JSON' : `${preview.count} quiz${preview.count === 1 ? '' : 'zes'} · ${preview.questions} questions`}</Badge>
+              <Button title="Reset Sample" variant="secondary" onPress={() => {setQuizFile(null); setFilePreview(null); setQuizJson(JSON.stringify(SAMPLE_MULTI, null, 2));}} />
+              {!quizFile && <Badge tone={preview.error ? 'red' : 'blue'}>{preview.error ? 'Invalid JSON' : `${preview.count} quiz${preview.count === 1 ? '' : 'zes'} · ${preview.questions} questions`}</Badge>}
             </View>
           </Card>
 
