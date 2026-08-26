@@ -102,6 +102,55 @@ function normalizeQuestionForValidation(q) {
   return {englishOptions, hindiOptions, bilingual, correct};
 }
 
+function normalizeQuizForBackend(quiz) {
+  const questions = (quiz.questions || []).map((q) => {
+    const question = q?.question;
+    const englishQuestion = question && typeof question === 'object'
+      ? String(question.english ?? question.en ?? question.hindi ?? question.hi ?? '').trim()
+      : String(question ?? '').trim();
+    const hindiQuestion = q?.question_hindi != null
+      ? String(q.question_hindi).trim()
+      : (question && typeof question === 'object'
+          ? String(question.hindi ?? question.hi ?? question.english ?? question.en ?? '').trim()
+          : englishQuestion);
+
+    const options = q?.options;
+    let englishOptions = Array.isArray(options)
+      ? options
+      : (options?.english ?? options?.en ?? []);
+    let hindiOptions = Array.isArray(options)
+      ? (Array.isArray(q?.options_hindi) ? q.options_hindi : options)
+      : (options?.hindi ?? options?.hi ?? q?.options_hindi ?? []);
+
+    if (!Array.isArray(englishOptions)) englishOptions = [];
+    if (!Array.isArray(hindiOptions)) hindiOptions = [];
+    if (!englishOptions.length) englishOptions = [...hindiOptions];
+    if (!hindiOptions.length) hindiOptions = [...englishOptions];
+
+    const explanation = q?.explanation;
+    const explanationEnglish = explanation && typeof explanation === 'object'
+      ? String(explanation.english ?? explanation.en ?? explanation.hindi ?? explanation.hi ?? '').trim()
+      : String(explanation ?? '').trim();
+    const explanationHindi = q?.explanation_hindi != null
+      ? String(q.explanation_hindi).trim()
+      : (explanation && typeof explanation === 'object'
+          ? String(explanation.hindi ?? explanation.hi ?? explanation.english ?? explanation.en ?? '').trim()
+          : explanationEnglish);
+
+    return {
+      ...q,
+      question: englishQuestion,
+      question_hindi: hindiQuestion || englishQuestion,
+      options: englishOptions.map(x => String(x).trim()),
+      options_hindi: hindiOptions.map(x => String(x).trim()),
+      explanation: explanationEnglish,
+      explanation_hindi: explanationHindi || explanationEnglish,
+    };
+  });
+
+  return {...quiz, questions};
+}
+
 function validateQuizPayload(payload) {
   const quizzes = asQuizList(payload);
   if (!quizzes.length) throw new Error('Paste one quiz object, an array of quiz objects, or {"quizzes":[...]}.' );
@@ -413,7 +462,7 @@ export default function AdminBulkContentScreen({onBack}) {
       const batchNumber = Math.floor(offset / batchSize) + 1;
       const rawBatch = quizzes.slice(offset, offset + batchSize);
       const checked = validateQuizBatch(rawBatch, offset);
-      const batch = checked.valid;
+      const batch = checked.valid.map(normalizeQuizForBackend);
       const localFailures = [...checked.failures];
 
       setResult({kind: 'quiz', status: 'processing', source, total_quizzes: quizzes.length, total_batches: totalBatches, current_batch: batchNumber, processed_quizzes: offset, created_count: created, skipped_count: skipped, failed_count: failed, question_count: questions, batches: [...batches], message: `Processing batch ${batchNumber} of ${totalBatches}…`});
@@ -483,7 +532,7 @@ export default function AdminBulkContentScreen({onBack}) {
             let batchResult = {created: 0, skipped: 0, failed: checked.failures.length, question_count: 0, failed_quizzes: checked.failures};
             if (checked.valid.length) {
               try {
-                const response = await api.bulkQuizBatch({...selection, bulk_upload_id: bulkUploadId, quizzes: checked.valid});
+                const response = await api.bulkQuizBatch({...selection, bulk_upload_id: bulkUploadId, quizzes: checked.valid.map(normalizeQuizForBackend)});
                 batchResult = {created: Number(response.created_count || 0), skipped: Number(response.skipped_count || 0), failed: Number(response.failed_count || 0) + checked.failures.length, question_count: Number(response.question_count || 0), failed_quizzes: [...checked.failures, ...(response.failed_quizzes || [])]};
               } catch (error) {
                 batchResult.failed = checked.valid.length + checked.failures.length;
