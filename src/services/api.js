@@ -977,6 +977,7 @@ export const api = {
 
   // Backward-compatible content APIs used by bulk/admin screens.
   bulkQuiz: (body) => request('/admin/bulk/quiz', { method: 'POST', body: JSON.stringify(body) }),
+  bulkQuizBatch: (body) => request('/admin/bulk/quiz-batch', { method: 'POST', body: JSON.stringify(body) }),
   bulkQuizFile: (file, fields = {}) => uploadFile('/admin/bulk/quiz-file', file, fields),
   bulkCoursePdf: (file, fields = {}) => uploadFile('/admin/bulk/course-pdf', file, fields),
   publishModule: (id) => request(`/admin/modules/${id}/publish`, { method: 'POST' }),

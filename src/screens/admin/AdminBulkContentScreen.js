@@ -1,5 +1,5 @@
 import React, {useEffect, useMemo, useState} from 'react';
-import {Alert, Text, View} from 'react-native';
+import {Alert, Platform, Text, View} from 'react-native';
 import {AppShell, Badge, Button, Card, DropdownSelect, Field, Header} from '../../components/UI';
 import {TaxonomyPicker} from '../../components/TaxonomyPicker';
 import {api} from '../../services/api';
@@ -62,7 +62,6 @@ function resolveCorrectAnswer(value, options) {
 function validateQuizPayload(payload) {
   const quizzes = asQuizList(payload);
   if (!quizzes.length) throw new Error('Paste one quiz object, an array of quiz objects, or {"quizzes":[...]}.');
-  if (quizzes.length > 500) throw new Error('Maximum 500 quizzes per upload.');
 
   const titles = new Set();
   quizzes.forEach((quiz, qi) => {
@@ -78,8 +77,10 @@ function validateQuizPayload(payload) {
       const qn = qi2 + 1;
       if (!q || typeof q !== 'object') throw new Error(`Quiz ${n}, question ${qn}: invalid question object.`);
       if (!String(q.question || '').trim()) throw new Error(`Quiz ${n}, question ${qn}: question text is empty.`);
-      if (!Array.isArray(q.options) || q.options.length < 2) throw new Error(`Quiz ${n}, question ${qn}: provide at least two options.`);
+      if (!Array.isArray(q.options) || q.options.length !== 4) throw new Error(`Quiz ${n}, question ${qn}: exactly four options are required.`);
       if (q.options.some(x => !String(x).trim())) throw new Error(`Quiz ${n}, question ${qn}: options cannot be empty.`);
+      const normalizedOptions = q.options.map(x => String(x).trim().toLowerCase());
+      if (new Set(normalizedOptions).size !== normalizedOptions.length) throw new Error(`Quiz ${n}, question ${qn}: duplicate options are not allowed.`);
       const correct = resolveCorrectAnswer(q.correct_answer ?? q.answer, q.options);
       if (!Number.isInteger(correct) || correct < 0 || correct >= q.options.length) {
         throw new Error(`Quiz ${n}, question ${qn}: correct_answer must be a zero-based index, A/B/C..., or an exact option.`);
@@ -137,15 +138,35 @@ export default function AdminBulkContentScreen({onBack}) {
   const selection = taxonomyFields(taxonomy, categoryIds, subcategoryIds);
   const ready = categoryIds.length > 0 && subcategoryIds.length > 0;
 
+  const readPickedFile = async (selected) => {
+    if (!selected) throw new Error('No file selected.');
+    if (Platform.OS === 'web' && selected.file && typeof selected.file.text === 'function') {
+      return selected.file.text();
+    }
+    if (!selected.uri) throw new Error('The selected file has no URI. Please choose it again.');
+    const response = await fetch(selected.uri);
+    if (!response.ok) throw new Error('Unable to read the selected file.');
+    return response.text();
+  };
+
   const pickQuiz = async () => {
-    const r = await DocumentPicker.getDocumentAsync({type: ['application/json', 'text/plain'], copyToCacheDirectory: true, multiple: false});
-    if (!r.canceled) setQuizFile(r.assets?.[0] || null);
+    try {
+      const selected = await pickFile({accept: 'application/json,.json,text/plain', multiple: false});
+      if (!selected) return;
+      setQuizFile(selected);
+      const text = await readPickedFile(selected);
+      JSON.parse(text);
+      setQuizJson(text);
+      setResult(null);
+    } catch (e) {
+      Alert.alert('JSON file', e.message || 'Unable to read the selected JSON file.');
+    }
   };
 
   const loadQuiz = async () => {
     if (!quizFile) return;
     try {
-      const text = await (await fetch(quizFile.uri)).text();
+      const text = await readPickedFile(quizFile);
       JSON.parse(text);
       setQuizJson(text);
       setResult(null);
@@ -162,21 +183,108 @@ export default function AdminBulkContentScreen({onBack}) {
     }
   };
 
+  const processQuizBatches = async (parsed, source = 'editor') => {
+    if (!ready) throw new Error('Select at least one category and one subcategory before uploading quizzes.');
+    const quizzes = validateQuizPayload(parsed);
+    const batchSize = 50;
+    const totalBatches = Math.ceil(quizzes.length / batchSize);
+    const bulkUploadId = `quiz-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    const batches = [];
+    let created = 0;
+    let skipped = 0;
+    let failed = 0;
+    let questions = 0;
+
+    for (let offset = 0; offset < quizzes.length; offset += batchSize) {
+      const batchNumber = Math.floor(offset / batchSize) + 1;
+      const batch = quizzes.slice(offset, offset + batchSize).map((quiz, index) => ({
+        ...quiz,
+        _bulk_source_index: offset + index + 1,
+      }));
+
+      setResult({
+        kind: 'quiz',
+        status: 'processing',
+        source,
+        total_quizzes: quizzes.length,
+        total_batches: totalBatches,
+        current_batch: batchNumber,
+        processed_quizzes: offset,
+        created_count: created,
+        skipped_count: skipped,
+        failed_count: failed,
+        question_count: questions,
+        batches: [...batches],
+        message: `Processing batch ${batchNumber} of ${totalBatches}…`,
+      });
+
+      try {
+        const response = await api.bulkQuizBatch({
+          ...selection,
+          bulk_upload_id: bulkUploadId,
+          quizzes: batch,
+        });
+        created += Number(response.created_count || 0);
+        skipped += Number(response.skipped_count || 0);
+        failed += Number(response.failed_count || 0);
+        questions += Number(response.question_count || 0);
+        batches.push({
+          batch: batchNumber,
+          size: batch.length,
+          created: Number(response.created_count || 0),
+          skipped: Number(response.skipped_count || 0),
+          failed: Number(response.failed_count || 0),
+          failures: response.failed_quizzes || [],
+          status: 'completed',
+        });
+      } catch (e) {
+        failed += batch.length;
+        batches.push({
+          batch: batchNumber,
+          size: batch.length,
+          created: 0,
+          skipped: 0,
+          failed: batch.length,
+          failures: [{error: e.message || 'Batch request failed.'}],
+          status: 'failed',
+        });
+      }
+
+      setResult({
+        kind: 'quiz',
+        status: batchNumber === totalBatches ? 'completed' : 'processing',
+        source,
+        total_quizzes: quizzes.length,
+        total_batches: totalBatches,
+        current_batch: batchNumber,
+        processed_quizzes: Math.min(offset + batch.length, quizzes.length),
+        created_count: created,
+        skipped_count: skipped,
+        failed_count: failed,
+        question_count: questions,
+        batches: [...batches],
+        message: batchNumber === totalBatches
+          ? `Upload completed: ${created} created, ${skipped} skipped, ${failed} failed.`
+          : `Batch ${batchNumber} of ${totalBatches} completed. Starting the next batch…`,
+      });
+    }
+
+    return {created, skipped, failed, questions, total: quizzes.length, totalBatches, batches};
+  };
+
   const createQuiz = async () => {
     try {
       setBusy(true);
       setResult(null);
-      if (!ready) throw new Error('Select at least one category and one subcategory before uploading quizzes.');
       const parsed = JSON.parse(quizJson);
-      validateQuizPayload(parsed);
-      const d = await api.bulkQuiz({
-        ...selection,
-        quizzes: asQuizList(parsed),
-      });
-      setResult({kind: 'quiz', ...d});
-      Alert.alert('Quiz drafts created', d.message || `${d.quiz_count || 1} quiz draft(s) created.`);
+      const summary = await processQuizBatches(parsed, 'editor');
+      Alert.alert(
+        'Bulk quiz upload completed',
+        `${summary.created} created · ${summary.skipped} skipped · ${summary.failed} failed`,
+      );
     } catch (e) {
-      Alert.alert('Bulk quiz', e.message || 'Unable to create quiz drafts.');
+      setResult({kind: 'quiz', status: 'failed', message: e.message || 'Unable to process quiz JSON.'});
+      Alert.alert('Bulk quiz', e.message || 'Unable to process quiz JSON.');
     } finally {
       setBusy(false);
     }
@@ -187,12 +295,17 @@ export default function AdminBulkContentScreen({onBack}) {
       setBusy(true);
       setResult(null);
       if (!quizFile) throw new Error('Choose a JSON file first.');
-      if (!ready) throw new Error('Select at least one category and one subcategory before uploading quizzes.');
-      const d = await api.bulkQuizFile(quizFile, selection);
-      setResult({kind: 'quiz', ...d});
-      Alert.alert('Quiz drafts created', d.message || `${d.quiz_count || 1} quiz draft(s) created.`);
+      const text = await readPickedFile(quizFile);
+      setQuizJson(text);
+      const parsed = JSON.parse(text);
+      const summary = await processQuizBatches(parsed, 'file');
+      Alert.alert(
+        'JSON upload completed',
+        `${summary.created} created · ${summary.skipped} skipped · ${summary.failed} failed`,
+      );
     } catch (e) {
-      Alert.alert('JSON upload', e.message || 'Unable to create quiz drafts.');
+      setResult({kind: 'quiz', status: 'failed', message: e.message || 'Unable to upload quiz JSON.'});
+      Alert.alert('JSON upload', e.message || 'Unable to upload quiz JSON.');
     } finally {
       setBusy(false);
     }
@@ -261,14 +374,14 @@ export default function AdminBulkContentScreen({onBack}) {
               Keep each quiz focused on its title, subject, topic and questions. Do not add category or subcategory fields to the JSON.
             </Text>
             <View style={{flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginTop: 12}}>
-              <Button title="📂 Choose JSON" variant="secondary" onPress={pickQuiz} />
-              {quizFile && <Button title="Load selected file" variant="secondary" onPress={loadQuiz} />}
+              <Button title="📂 Choose JSON" variant="secondary" onPress={pickQuiz} disabled={busy} />
+              {quizFile && <Button title="Reload selected JSON" variant="secondary" onPress={loadQuiz} disabled={busy} />}
               {quizFile && <Badge tone="green">{quizFile.name}</Badge>}
             </View>
             <Field label="Quiz JSON" value={quizJson} onChangeText={setQuizJson} multiline />
             <View style={{flexDirection: 'row', gap: 8, flexWrap: 'wrap'}}>
-              <Button title={busy ? 'Creating…' : 'Create Quiz Drafts'} onPress={createQuiz} disabled={busy || !ready} />
-              <Button title="Upload JSON & Create" variant="secondary" onPress={uploadQuiz} disabled={busy || !quizFile || !ready} />
+              <Button title={busy ? 'Processing…' : 'Create Quiz Drafts'} onPress={createQuiz} disabled={busy || !ready} />
+              <Button title={busy ? 'Uploading…' : 'Upload JSON & Create'} variant="secondary" onPress={uploadQuiz} disabled={busy || !quizFile || !ready} />
               <Button title="Reset Sample" variant="secondary" onPress={() => setQuizJson(JSON.stringify(SAMPLE_MULTI, null, 2))} />
               <Badge tone={preview.error ? 'red' : 'blue'}>{preview.error ? 'Invalid JSON' : `${preview.count} quiz${preview.count === 1 ? '' : 'zes'} · ${preview.questions} questions`}</Badge>
             </View>
@@ -276,19 +389,30 @@ export default function AdminBulkContentScreen({onBack}) {
 
           <Card style={{backgroundColor: '#F8F9FD'}}>
             <Text style={{fontWeight: '900', color: colors.navy}}>JSON format</Text>
-            <Text style={{fontFamily: 'monospace', fontSize: 11, marginTop: 8}}>{`[
+            <Text style={{fontFamily: 'monospace', fontSize: 10, lineHeight: 16, marginTop: 8}}>{`[
   {
-    "title": "English Grammar - Noun",
+    "title": "English Grammar - Noun - Set 1",
     "subject": "English",
     "topic": "Noun",
-    "description": "10-question practice test",
+    "description": "Medium practice test",
     "passing_percentage": 60,
     "duration_minutes": 20,
-    "questions": [ ...10 questions... ]
+    "questions": [
+      {
+        "question": "Which of the following is a proper noun?",
+        "options": ["city", "country", "Delhi", "river"],
+        "correct_answer": 2,
+        "difficulty": "medium",
+        "marks": 1,
+        "negative_marks": 0,
+        "explanation": "Delhi is the specific name of a city."
+      }
+    ]
   }
-]`}</Text>
+]`}
+            </Text>
             <Text style={{color: colors.muted, marginTop: 10, lineHeight: 18}}>
-              Category and subcategory are intentionally absent from this sample. The FE sends the selected taxonomy separately with the upload.
+              Required: title, subject, questions, exactly 4 unique options per question, and a zero-based correct_answer (0–3). Category/subcategory are selected above and are NOT required inside the JSON. Files larger than 50 quizzes are automatically sent as 50-quiz batches.
             </Text>
           </Card>
         </>
@@ -316,16 +440,60 @@ export default function AdminBulkContentScreen({onBack}) {
             </View>
             <Button title={busy ? 'Processing PDF…' : 'Generate Course Draft'} onPress={createCourse} disabled={busy || !file || !subject.trim() || !ready} style={{marginTop: 6}} />
           </Card>
+
+          <Card style={{backgroundColor: '#F8F9FD'}}>
+            <Text style={{fontWeight: '900', color: colors.navy}}>Course upload format</Text>
+            <Text style={{fontFamily: 'monospace', fontSize: 10, lineHeight: 16, marginTop: 8}}>{`PDF FILE: complete_english_grammar.pdf
+
+Metadata used by the API:
+{
+  "title": "Complete English Grammar",
+  "subject": "English",
+  "level": "Beginner",
+  "language": "English"
+}`}</Text>
+            <Text style={{color: colors.muted, marginTop: 10, lineHeight: 18}}>
+              Required: a real PDF file, subject, one or more selected categories and subcategories. Title is optional and can be derived from the PDF filename. Level and language are optional. The backend extracts modules and lessons from the PDF and stores the original PDF in R2.
+            </Text>
+          </Card>
         </>
       )}
 
       {result && (
-        <Card style={{borderColor: colors.success}}>
-          <Badge tone="green">Draft created</Badge>
-          <Text style={{fontSize: 18, fontWeight: '900', color: colors.navy, marginTop: 8}}>{result.kind === 'quiz' ? 'Quiz drafts ready' : 'Course ready'}</Text>
-          <Text style={{color: colors.muted, marginTop: 5}}>{result.message}</Text>
-          {result.kind === 'quiz' && <Text style={{fontWeight: '900', marginTop: 8}}>{result.quiz_count || 1} quizzes · {result.question_count || 0} questions</Text>}
-          {result.kind === 'course' && <Text style={{fontWeight: '900', marginTop: 8}}>{result.module_count} modules · {result.lesson_count} lessons</Text>}
+        <Card style={{borderColor: result.status === 'failed' ? colors.danger : colors.success, marginTop: 14}}>
+          <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', gap: 10}}>
+            <View style={{flex: 1}}>
+              <Text style={{fontSize: 18, fontWeight: '900', color: colors.navy}}>
+                {result.kind === 'quiz' ? 'Quiz bulk upload status' : 'Course import status'}
+              </Text>
+              <Text style={{color: colors.muted, marginTop: 5}}>{result.message}</Text>
+            </View>
+            <Badge tone={result.status === 'failed' ? 'red' : result.status === 'processing' ? 'orange' : 'green'}>
+              {result.status || 'completed'}
+            </Badge>
+          </View>
+
+          {result.kind === 'quiz' && result.total_quizzes ? (
+            <>
+              <View style={{flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14}}>
+                <Badge tone="blue">{result.processed_quizzes || 0}/{result.total_quizzes} processed</Badge>
+                <Badge tone="green">✓ {result.created_count || 0} created</Badge>
+                <Badge tone="orange">↻ {result.skipped_count || 0} skipped</Badge>
+                <Badge tone="red">✕ {result.failed_count || 0} failed</Badge>
+              </View>
+              <Text style={{fontWeight: '900', color: colors.navy, marginTop: 14}}>Batch status</Text>
+              {(result.batches || []).map((b) => (
+                <View key={`batch-${b.batch}`} style={{marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: '#F8F9FD', borderWidth: 1, borderColor: colors.border}}>
+                  <Text style={{fontWeight: '900', color: colors.navy}}>Batch {b.batch} · {b.size} quizzes · {b.status}</Text>
+                  <Text style={{fontSize: 11, color: colors.muted, marginTop: 3}}>Created {b.created} · Skipped {b.skipped} · Failed {b.failed}</Text>
+                  {(b.failures || []).slice(0, 5).map((f, i) => <Text key={i} style={{fontSize: 10, color: colors.danger, marginTop: 3}}>Quiz {f.source_index || ''}: {f.title || ''} {f.error || ''}</Text>)}
+                  {(b.failures || []).length > 5 ? <Text style={{fontSize: 10, color: colors.muted, marginTop: 3}}>+ {(b.failures || []).length - 5} more failures in this batch.</Text> : null}
+                </View>
+              ))}
+            </>
+          ) : null}
+
+          {result.kind === 'course' && <Text style={{fontWeight: '900', marginTop: 10}}>{result.module_count || 0} modules · {result.lesson_count || 0} lessons</Text>}
         </Card>
       )}
     </AppShell>
