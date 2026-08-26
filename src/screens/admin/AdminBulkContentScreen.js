@@ -276,9 +276,49 @@ export default function AdminBulkContentScreen({onBack}) {
   const [filePreview, setFilePreview] = useState(null);
 
   useEffect(() => {
-    api.adminTaxonomy()
-      .then(r => setTaxonomy(r?.categories || []))
-      .catch(e => Alert.alert('Taxonomy', e.message || 'Unable to load categories.'));
+    let active = true;
+    const loadTaxonomy = async () => {
+      try {
+        const r = await api.adminTaxonomy();
+        const list = Array.isArray(r?.categories) ? r.categories : [];
+        if (active && list.length) {
+          setTaxonomy(list);
+          return;
+        }
+        throw new Error('Taxonomy endpoint returned no categories.');
+      } catch (e) {
+        // Backward-compatible fallback for deployments where /admin/taxonomy
+        // is not present yet. IDs match the backend taxonomy seed.
+        if (!active) return;
+        const defaults = {
+          'SSC': ['SSC CGL', 'SSC CHSL', 'SSC CPO', 'SSC MTS', 'SSC GD'],
+          'Railway': ['RRB NTPC', 'RRB Group D', 'RRB ALP', 'RRB JE'],
+          'Banking': ['IBPS PO', 'IBPS Clerk', 'SBI PO', 'SBI Clerk', 'RBI Grade B', 'RBI Assistant'],
+          'UPSC': ['UPSC Civil Services', 'UPSC CDS', 'UPSC NDA'],
+          'Teaching': ['CTET', 'TET', 'KVS', 'DSSSB', 'REET'],
+          'Defence': ['NDA', 'CDS', 'AFCAT', 'Agniveer'],
+          'State Exams': ['State PSC', 'State SSC', 'State Police', 'State Teacher Exams'],
+          'General': ['General Competitive Exams', 'General Knowledge'],
+          'English Spoken': ['Spoken English', 'Business English', 'Interview English'],
+          'Computer': ['Computer Fundamentals', 'Programming', 'Web Development', 'Database', 'Software Development'],
+          'Other': ['Other Exams', 'Other Learning'],
+        };
+        const slug = value => String(value).trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+        setTaxonomy(Object.entries(defaults).map(([name, children]) => ({
+          id: slug(name),
+          name,
+          slug: slug(name),
+          subcategories: children.map(child => ({
+            id: `${slug(name)}:${slug(child)}`,
+            name: child,
+            slug: slug(child),
+            category_id: slug(name),
+          })),
+        })));
+      }
+    };
+    loadTaxonomy();
+    return () => { active = false; };
   }, []);
 
   const preview = useMemo(() => {
@@ -561,6 +601,7 @@ export default function AdminBulkContentScreen({onBack}) {
         <>
           <Card>
             <Text style={{fontSize: 21, fontWeight: '900', color: colors.navy}}>1. Select category & subcategory</Text>
+            <Text style={{color: colors.muted, fontSize: 12, marginTop: 4, marginBottom: 8}}>Choose one or more categories, then select the required subcategories. Categories are applied from the selected taxonomy arrays.</Text>
             <TaxonomyPicker
               taxonomy={taxonomy}
               categoryIds={categoryIds}
@@ -637,6 +678,7 @@ export default function AdminBulkContentScreen({onBack}) {
         <>
           <Card>
             <Text style={{fontSize: 21, fontWeight: '900', color: colors.navy}}>1. Select category & subcategory</Text>
+            <Text style={{color: colors.muted, fontSize: 12, marginTop: 4, marginBottom: 8}}>Choose one or more categories, then select the required subcategories. Categories are applied from the selected taxonomy arrays.</Text>
             <TaxonomyPicker
               taxonomy={taxonomy}
               categoryIds={categoryIds}
