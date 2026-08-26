@@ -301,15 +301,17 @@ export default function AdminBulkContentScreen({onBack}) {
     let skipped = 0;
     let failed = preFailures.length;
     let questions = 0;
+    let skippedQuestions = 0;
 
     for (let offset = 0; offset < quizzes.length; offset += batchSize) {
       const batchNumber = Math.floor(offset / batchSize) + 1;
       const rawBatch = quizzes.slice(offset, offset + batchSize);
       const checked = validateQuizBatch(rawBatch, offset);
       const batch = checked.valid.map(normalizeQuizForBackend);
-      const localFailures = [...checked.failures];
+      const localQuestionSkips = checked.failures.filter(x => Number.isInteger(x.question_index));
+      const localFailures = checked.failures.filter(x => !Number.isInteger(x.question_index));
 
-      setResult({kind: 'quiz', status: 'processing', source, total_quizzes: quizzes.length, total_batches: totalBatches, current_batch: batchNumber, processed_quizzes: offset, created_count: created, skipped_count: skipped, failed_count: failed, question_count: questions, batches: [...batches], message: `Processing batch ${batchNumber} of ${totalBatches}…`});
+      setResult({kind: 'quiz', status: 'processing', source, total_quizzes: quizzes.length, total_batches: totalBatches, current_batch: batchNumber, processed_quizzes: offset, created_count: created, skipped_count: skipped, failed_count: failed, skipped_question_count: skippedQuestions, question_count: questions, batches: [...batches], message: `Processing batch ${batchNumber} of ${totalBatches}…`});
 
       if (batch.length) {
         try {
@@ -317,22 +319,24 @@ export default function AdminBulkContentScreen({onBack}) {
           created += Number(response.created_count || 0);
           skipped += Number(response.skipped_count || 0);
           failed += Number(response.failed_count || 0) + localFailures.length;
+          skippedQuestions += Number(response.skipped_question_count || 0) + localQuestionSkips.length;
           questions += Number(response.question_count || 0);
-          batches.push({batch: batchNumber, size: rawBatch.length, sent: batch.length, created: Number(response.created_count || 0), skipped: Number(response.skipped_count || 0), failed: Number(response.failed_count || 0) + localFailures.length, failures: [...localFailures, ...(response.failed_quizzes || [])], status: 'completed'});
+          batches.push({batch: batchNumber, size: rawBatch.length, sent: batch.length, created: Number(response.created_count || 0), skipped: Number(response.skipped_count || 0), failed: Number(response.failed_count || 0) + localFailures.length, failures: [...localFailures, ...localQuestionSkips, ...(response.failed_quizzes || [])], skipped_questions: localQuestionSkips, status: 'completed'});
         } catch (e) {
           failed += batch.length + localFailures.length;
           batches.push({batch: batchNumber, size: rawBatch.length, sent: batch.length, created: 0, skipped: 0, failed: batch.length + localFailures.length, failures: [...localFailures, {error: e.message || 'Batch request failed.'}], status: 'failed'});
         }
       } else {
         failed += localFailures.length;
-        batches.push({batch: batchNumber, size: rawBatch.length, sent: 0, created: 0, skipped: 0, failed: localFailures.length, failures: localFailures, status: 'completed'});
+        skippedQuestions += localQuestionSkips.length;
+        batches.push({batch: batchNumber, size: rawBatch.length, sent: 0, created: 0, skipped: 0, failed: localFailures.length, skipped_questions: localQuestionSkips, failures: [...localFailures, ...localQuestionSkips], status: 'completed'});
       }
 
       const processed = Math.min(offset + rawBatch.length, quizzes.length);
-      setResult({kind: 'quiz', status: processed === quizzes.length ? 'completed' : 'processing', source, total_quizzes: quizzes.length, total_batches: totalBatches, current_batch: batchNumber, processed_quizzes: processed, created_count: created, skipped_count: skipped, failed_count: failed, question_count: questions, batches: [...batches], message: processed === quizzes.length ? `Upload completed: ${created} created, ${skipped} skipped, ${failed} failed.` : `Batch ${batchNumber} of ${totalBatches} completed. Starting the next batch…`});
+      setResult({kind: 'quiz', status: processed === quizzes.length ? 'completed' : 'processing', source, total_quizzes: quizzes.length, total_batches: totalBatches, current_batch: batchNumber, processed_quizzes: processed, created_count: created, skipped_count: skipped, failed_count: failed, skipped_question_count: skippedQuestions, question_count: questions, batches: [...batches], message: processed === quizzes.length ? `Upload completed: ${created} created, ${skipped} skipped, ${failed} failed.` : `Batch ${batchNumber} of ${totalBatches} completed. Starting the next batch…`});
       await new Promise(resolve => setTimeout(resolve, 0));
     }
-    return {created, skipped, failed, questions, total: quizzes.length, totalBatches, batches};
+    return {created, skipped, failed, skippedQuestions, questions, total: quizzes.length, totalBatches, batches};
   };
 
   const processQuizFileInWorker = async (source) => {
@@ -352,7 +356,7 @@ export default function AdminBulkContentScreen({onBack}) {
 
     const bulkUploadId = `quiz-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
     const batches = [];
-    let created = 0, skipped = 0, failed = 0, questions = 0, total = 0, totalBatches = 0;
+    let created = 0, skipped = 0, failed = 0, skippedQuestions = 0, questions = 0, total = 0, totalBatches = 0;
 
     const finish = () => worker.__cleanup();
     const sendNext = () => worker.postMessage({type: 'next'});
@@ -373,30 +377,33 @@ export default function AdminBulkContentScreen({onBack}) {
             const rawBatch = Array.isArray(data.batch) ? data.batch : [];
             const checked = validateQuizBatch(rawBatch, data.offset || 0);
             setResult({kind: 'quiz', status: 'processing', source: 'file', total_quizzes: total || data.total, total_batches: totalBatches || data.totalBatches, current_batch: batchNumber, processed_quizzes: data.offset || 0, created_count: created, skipped_count: skipped, failed_count: failed, question_count: questions, batches: [...batches], message: `Processing batch ${batchNumber} of ${totalBatches || data.totalBatches}…`});
-            let batchResult = {created: 0, skipped: 0, failed: checked.failures.length, question_count: 0, failed_quizzes: checked.failures};
+            const questionSkips = checked.failures.filter(x => Number.isInteger(x.question_index));
+            const quizFailures = checked.failures.filter(x => !Number.isInteger(x.question_index));
+            let batchResult = {created: 0, skipped: 0, failed: quizFailures.length, skipped_questions: questionSkips.length, question_count: 0, failed_quizzes: [...quizFailures, ...questionSkips]};
             if (checked.valid.length) {
               try {
                 const response = await api.bulkQuizBatch({...selection, bulk_upload_id: bulkUploadId, quizzes: checked.valid.map(normalizeQuizForBackend)});
-                batchResult = {created: Number(response.created_count || 0), skipped: Number(response.skipped_count || 0), failed: Number(response.failed_count || 0) + checked.failures.length, question_count: Number(response.question_count || 0), failed_quizzes: [...checked.failures, ...(response.failed_quizzes || [])]};
+                batchResult = {created: Number(response.created_count || 0), skipped: Number(response.skipped_count || 0), failed: Number(response.failed_count || 0) + quizFailures.length, skipped_questions: Number(response.skipped_question_count || 0) + questionSkips.length, question_count: Number(response.question_count || 0), failed_quizzes: [...quizFailures, ...questionSkips, ...(response.failed_quizzes || [])]};
               } catch (error) {
-                batchResult.failed = checked.valid.length + checked.failures.length;
+                batchResult.failed = checked.valid.length + quizFailures.length;
                 batchResult.failed_quizzes = [...checked.failures, {error: error.message || 'Batch request failed.'}];
               }
             }
             created += batchResult.created;
             skipped += batchResult.skipped;
             failed += batchResult.failed;
+            skippedQuestions += Number(batchResult.skipped_questions || 0);
             questions += batchResult.question_count;
-            batches.push({batch: batchNumber, size: rawBatch.length, sent: checked.valid.length, created: batchResult.created, skipped: batchResult.skipped, failed: batchResult.failed, failures: batchResult.failed_quizzes || [], status: 'completed'});
+            batches.push({batch: batchNumber, size: rawBatch.length, sent: checked.valid.length, created: batchResult.created, skipped: batchResult.skipped, failed: batchResult.failed, skipped_questions: Number(batchResult.skipped_questions || 0), failures: batchResult.failed_quizzes || [], status: 'completed'});
             const processed = Math.min((data.offset || 0) + rawBatch.length, total || data.total);
-            setResult({kind: 'quiz', status: processed >= (total || data.total) ? 'completed' : 'processing', source: 'file', total_quizzes: total || data.total, total_batches: totalBatches || data.totalBatches, current_batch: batchNumber, processed_quizzes: processed, created_count: created, skipped_count: skipped, failed_count: failed, question_count: questions, batches: [...batches], message: processed >= (total || data.total) ? `Upload completed: ${created} created, ${skipped} skipped, ${failed} failed.` : `Batch ${batchNumber} of ${totalBatches || data.totalBatches} completed. Starting the next batch…`});
+            setResult({kind: 'quiz', status: processed >= (total || data.total) ? 'completed' : 'processing', source: 'file', total_quizzes: total || data.total, total_batches: totalBatches || data.totalBatches, current_batch: batchNumber, processed_quizzes: processed, created_count: created, skipped_count: skipped, failed_count: failed, skipped_question_count: skippedQuestions, question_count: questions, batches: [...batches], message: processed >= (total || data.total) ? `Upload completed: ${created} created, ${skipped} skipped, ${failed} failed.` : `Batch ${batchNumber} of ${totalBatches || data.totalBatches} completed. Starting the next batch…`});
             await new Promise(r => setTimeout(r, 0));
             sendNext();
             return;
           }
           if (data.type === 'done') {
             finish();
-            resolve({created, skipped, failed, questions, total, totalBatches, batches});
+            resolve({created, skipped, failed, skippedQuestions, questions, total, totalBatches, batches});
             return;
           }
           if (data.type === 'error') {
@@ -628,14 +635,15 @@ Metadata used by the API:
                 <Badge tone="blue">{result.processed_quizzes || 0}/{result.total_quizzes} processed</Badge>
                 <Badge tone="green">✓ {result.created_count || 0} created</Badge>
                 <Badge tone="orange">↻ {result.skipped_count || 0} skipped</Badge>
-                <Badge tone="red">✕ {result.failed_count || 0} failed</Badge>
+                <Badge tone="red">✕ {result.failed_count || 0} failed quizzes</Badge>
+                <Badge tone="orange">↻ {result.skipped_question_count || 0} questions skipped</Badge>
               </View>
               <Text style={{fontWeight: '900', color: colors.navy, marginTop: 14}}>Batch status</Text>
               {(result.batches || []).map((b) => (
                 <View key={`batch-${b.batch}`} style={{marginTop: 8, padding: 10, borderRadius: 10, backgroundColor: '#F8F9FD', borderWidth: 1, borderColor: colors.border}}>
                   <Text style={{fontWeight: '900', color: colors.navy}}>Batch {b.batch} · {b.size} quizzes · {b.status}</Text>
-                  <Text style={{fontSize: 11, color: colors.muted, marginTop: 3}}>Created {b.created} · Skipped {b.skipped} · Failed {b.failed}</Text>
-                  {(b.failures || []).slice(0, 5).map((f, i) => <Text key={i} style={{fontSize: 10, color: colors.danger, marginTop: 3}}>Quiz {f.source_index || ''}: {f.title || ''} {f.error || ''}</Text>)}
+                  <Text style={{fontSize: 11, color: colors.muted, marginTop: 3}}>Created {b.created} · Skipped quizzes {b.skipped} · Failed quizzes {b.failed} · Skipped questions {b.skipped_questions || 0}</Text>
+                  {(b.failures || []).slice(0, 5).map((f, i) => <Text key={i} style={{fontSize: 10, color: Number.isInteger(f.question_index) ? colors.muted : colors.danger, marginTop: 3}}>{Number.isInteger(f.question_index) ? `Question ${f.question_index} skipped` : `Quiz ${f.source_index || ''} failed`}: {f.title || ''} {f.error || f.reason || ''}</Text>)}
                   {(b.failures || []).length > 5 ? <Text style={{fontSize: 10, color: colors.muted, marginTop: 3}}>+ {(b.failures || []).length - 5} more failures in this batch.</Text> : null}
                 </View>
               ))}
