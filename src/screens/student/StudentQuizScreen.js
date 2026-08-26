@@ -7,7 +7,84 @@ import { colors } from '../../theme';
 const LETTERS = ['A', 'B', 'C', 'D', 'E'];
 const formatTime = seconds => `${String(Math.max(0, Math.floor(seconds / 60))).padStart(2, '0')}:${String(Math.max(0, seconds % 60)).padStart(2, '0')}`;
 
-function Option({ letter, text, selected, onPress, disabled }) {
+// ------------------------------------------------------------
+// Quiz content normalization
+// Supports all quiz formats accepted by the bulk importer:
+// 1) Single language: question + options[]
+// 2) Bilingual object: question.{english,hindi} + options.{english,hindi}
+// 3) Legacy bilingual: question_hindi + options_hindi
+// 4) Paired options: options_bilingual[]
+// The student screen always renders English and Hindi when Hindi exists,
+// while keeping single-language quizzes exactly as before.
+// ------------------------------------------------------------
+function asText(value) {
+  if (value === undefined || value === null) return '';
+  return String(value).trim();
+}
+
+function textPair(value, hindiFallback) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) {
+    return {
+      english: asText(value.english ?? value.en ?? value.text ?? value.label ?? value.value),
+      hindi: asText(value.hindi ?? value.hi ?? value.text_hindi ?? value.label_hindi),
+    };
+  }
+
+  return {
+    english: asText(value),
+    hindi: asText(hindiFallback),
+  };
+}
+
+function questionPair(question) {
+  return textPair(
+    question?.question ?? question?.text,
+    question?.question_hindi ?? question?.hindi_question ?? question?.questionHindi
+  );
+}
+
+function optionPairs(question) {
+  const raw = question?.options;
+  const hindi = question?.options_hindi ?? question?.optionsHindi ?? [];
+
+  // New bilingual object: { english: [...], hindi: [...] }
+  if (raw && !Array.isArray(raw) && typeof raw === 'object') {
+    const english = raw.english ?? raw.en ?? [];
+    const hindiOptions = raw.hindi ?? raw.hi ?? [];
+    if (Array.isArray(english)) {
+      return english.map((item, index) => textPair(item, hindiOptions[index]));
+    }
+  }
+
+  // Paired bilingual options: [{english, hindi}, ...]
+  if (Array.isArray(question?.options_bilingual)) {
+    return question.options_bilingual.map(item => textPair(item));
+  }
+
+  // Normal/legacy options arrays.
+  const english = Array.isArray(raw) ? raw : [];
+  return english.map((item, index) => textPair(item, hindi?.[index]));
+}
+
+function hasHindi(pair) {
+  return Boolean(asText(pair?.hindi));
+}
+
+function BilingualText({ pair, style, hindiStyle }) {
+  if (!hasHindi(pair)) {
+    return <Text style={style}>{pair?.english || ''}</Text>;
+  }
+
+  return (
+    <View style={{ flex: 1 }}>
+      <Text style={style}>{pair.english}</Text>
+      <Text style={[style, hindiStyle || {}, { marginTop: 5 }]}>{pair.hindi}</Text>
+    </View>
+  );
+}
+
+
+function Option({ letter, pair, selected, onPress, disabled }) {
   return (
     <Pressable
       disabled={disabled}
@@ -22,7 +99,11 @@ function Option({ letter, text, selected, onPress, disabled }) {
       <View style={{ width: 34, height: 34, borderRadius: 11, alignItems: 'center', justifyContent: 'center', backgroundColor: selected ? colors.primary : '#F6F6FB', borderWidth: 1, borderColor: selected ? colors.primary : colors.border }}>
         <Text style={{ fontFamily: colors.fontFamily, fontWeight: '900', color: selected ? '#fff' : colors.navy }}>{letter}</Text>
       </View>
-      <Text style={{ flex: 1, fontFamily: colors.fontFamily, fontSize: 13, fontWeight: selected ? '900' : '700', color: colors.navy, lineHeight: 21 }}>{text}</Text>
+      <BilingualText
+        pair={pair}
+        style={{ flex: 1, fontFamily: colors.fontFamily, fontSize: 13, fontWeight: selected ? '900' : '700', color: colors.navy, lineHeight: 21 }}
+        hindiStyle={{ fontWeight: selected ? '800' : '600' }}
+      />
       {selected && <Text style={{ fontSize: 18, color: colors.primary }}>✓</Text>}
     </Pressable>
   );
@@ -109,6 +190,8 @@ export default function StudentQuizScreen({ quizId, onBack, backLabel = 'Back to
   const answered = useMemo(() => Object.keys(answers).length, [answers]);
   const completion = questions.length ? Math.round(answered / questions.length * 100) : 0;
   const q = questions[current];
+  const currentQuestionPair = useMemo(() => questionPair(q), [q]);
+  const currentOptionPairs = useMemo(() => optionPairs(q), [q]);
 
   const start = async () => {
     if (attempt) return;
@@ -149,10 +232,16 @@ export default function StudentQuizScreen({ quizId, onBack, backLabel = 'Back to
   if (result) {
     const details = Array.isArray(result.details) ? result.details : [];
     const optionLabel = (d, v) => {
-      if (v === undefined || v === null || v === '') return 'Not answered';
-      const opts = d.options || []; const n = Number(v);
-      if (Number.isInteger(n) && n >= 0 && n < opts.length) { const o = opts[n]; return typeof o === 'object' ? (o.text || o.label || o.value || String(o)) : String(o); }
-      return String(v);
+      if (v === undefined || v === null || v === '') return { english: 'Not answered', hindi: '' };
+      const optsQuestion = {
+        options: d.options,
+        options_hindi: d.options_hindi,
+        options_bilingual: d.options_bilingual,
+      };
+      const opts = optionPairs(optsQuestion);
+      const n = Number(v);
+      if (Number.isInteger(n) && n >= 0 && n < opts.length) return opts[n];
+      return textPair(v);
     };
     return <AppShell>
       <View style={{ maxWidth: 1000, width: '100%', alignSelf: 'center' }}>
@@ -167,10 +256,10 @@ export default function StudentQuizScreen({ quizId, onBack, backLabel = 'Back to
         </Card>
         <View style={{ marginTop: 18 }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 21, fontWeight: '900', color: colors.navy, marginBottom: 10 }}>Answer Review</Text>
           {details.map((d, i) => <Card key={d.question_id || i} style={{ marginBottom: 11, borderColor: d.correct ? colors.green : colors.orange }}>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}><Text style={{ flex: 1, fontFamily: colors.fontFamily, fontSize: 14, fontWeight: '900', color: colors.navy }}>Q{i + 1}. {d.question}</Text><Badge tone={d.correct ? 'green' : 'orange'}>{d.correct ? 'Correct' : 'Review'}</Badge></View>
-            <Text style={{ fontFamily: colors.fontFamily, fontSize: 11, color: colors.muted, marginTop: 10 }}>Your answer: <Text style={{ fontWeight: '900', color: d.correct ? colors.success : colors.orange }}>{optionLabel(d, d.submitted)}</Text></Text>
-            <Text style={{ fontFamily: colors.fontFamily, fontSize: 11, color: colors.muted, marginTop: 6 }}>Correct answer: <Text style={{ fontWeight: '900', color: colors.success }}>{d.correct_answer_text || optionLabel(d, d.correct_answer)}</Text></Text>
-            {d.explanation ? <View style={{ marginTop: 9, padding: 11, borderRadius: 11, backgroundColor: colors.purpleSoft }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 10, fontWeight: '900', color: colors.primary }}>Explanation</Text><Text style={{ fontFamily: colors.fontFamily, fontSize: 11, lineHeight: 18, color: colors.navy, marginTop: 3 }}>{d.explanation}</Text></View> : null}
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}><View style={{ flex: 1, flexDirection: 'row', gap: 4 }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 14, fontWeight: '900', color: colors.navy }}>Q{i + 1}.</Text><BilingualText pair={questionPair(d)} style={{ fontFamily: colors.fontFamily, fontSize: 14, fontWeight: '900', color: colors.navy, lineHeight: 21 }} /></View><Badge tone={d.correct ? 'green' : 'orange'}>{d.correct ? 'Correct' : 'Review'}</Badge></View>
+            <View style={{ marginTop: 10 }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 11, color: colors.muted }}>Your answer:</Text><BilingualText pair={optionLabel(d, d.submitted)} style={{ fontFamily: colors.fontFamily, fontSize: 11, fontWeight: '900', color: d.correct ? colors.success : colors.orange, lineHeight: 18 }} /></View>
+            <View style={{ marginTop: 6 }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 11, color: colors.muted }}>Correct answer:</Text><BilingualText pair={d.correct_answer_text ? textPair(d.correct_answer_text, d.correct_answer_text_hindi) : optionLabel(d, d.correct_answer)} style={{ fontFamily: colors.fontFamily, fontSize: 11, fontWeight: '900', color: colors.success, lineHeight: 18 }} /></View>
+            {(d.explanation || d.explanation_hindi) ? <View style={{ marginTop: 9, padding: 11, borderRadius: 11, backgroundColor: colors.purpleSoft }}><Text style={{ fontFamily: colors.fontFamily, fontSize: 10, fontWeight: '900', color: colors.primary }}>Explanation</Text><BilingualText pair={textPair(d.explanation, d.explanation_hindi)} style={{ fontFamily: colors.fontFamily, fontSize: 11, lineHeight: 18, color: colors.navy, marginTop: 3 }} hindiStyle={{ marginTop: 5 }} /></View> : null}
           </Card>)}
         </View>
         <Button title={backLabel} onPress={handleBack} style={{ marginTop: 4, width: '100%' }} />
@@ -218,9 +307,9 @@ export default function StudentQuizScreen({ quizId, onBack, backLabel = 'Back to
               <Badge tone="purple">{answered}/{questions.length} answered</Badge>
             </View>
             <View style={{ marginTop: 16, padding: 16, borderRadius: 16, backgroundColor: current % 2 ? '#F4F8FF' : '#F5F1FF', borderWidth: 1, borderColor: current % 2 ? '#DDE8FF' : '#E3DBFF' }}>
-              <Text style={{ fontFamily: colors.fontFamily, fontSize: 20, fontWeight: '900', color: colors.navy, lineHeight: 29 }}>{q.question || q.text}</Text>
+              <BilingualText pair={currentQuestionPair} style={{ fontFamily: colors.fontFamily, fontSize: 20, fontWeight: '900', color: colors.navy, lineHeight: 29 }} hindiStyle={{ fontWeight: '800' }} />
             </View>
-            <View style={{ marginTop: 17 }}>{(q.options || []).map((option, index) => { const label = typeof option === 'object' ? (option.text || option.label || option.value || '') : String(option); return <Option key={index} letter={LETTERS[index] || String(index + 1)} text={label} selected={String(answers[api.idOf(q)]) === String(index)} disabled={busy} onPress={() => setAnswers(prev => ({ ...prev, [api.idOf(q)]: index }))} />; })}</View>
+            <View style={{ marginTop: 17 }}>{currentOptionPairs.map((pair, index) => <Option key={index} letter={LETTERS[index] || String(index + 1)} pair={pair} selected={String(answers[api.idOf(q)]) === String(index)} disabled={busy} onPress={() => setAnswers(prev => ({ ...prev, [api.idOf(q)]: index }))} />)}</View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10, marginTop: 8 }}>
               <Button title="← Previous" variant="secondary" onPress={() => setCurrent(Math.max(0, current - 1))} disabled={current === 0 || busy} />
               {current < questions.length - 1 ? <Button title="Next Question →" onPress={() => setCurrent(Math.min(questions.length - 1, current + 1))} disabled={busy} /> : <Button title={busy ? 'Submitting…' : 'Submit Quiz'} onPress={() => submit(false)} disabled={busy} />}
