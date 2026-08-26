@@ -48,165 +48,81 @@ function asQuizList(value) {
   return [];
 }
 
-const SAMPLE_BILINGUAL = [
-  {
-    title: 'English Grammar - Noun - Bilingual Set 1',
-    subject: 'English',
-    topic: 'Noun',
-    description: 'English + Hindi practice test',
-    passing_percentage: 60,
-    duration_minutes: 20,
-    questions: [
-      {
-        question: {
-          english: 'Which of the following is a proper noun?',
-          hindi: 'निम्नलिखित में से कौन-सा व्यक्तिवाचक संज्ञा है?'
-        },
-        options: {
-          english: ['city', 'country', 'Delhi', 'river'],
-          hindi: ['शहर', 'देश', 'दिल्ली', 'नदी']
-        },
-        correct_answer: 2,
-        difficulty: 'medium',
-        marks: 1,
-        negative_marks: 0,
-        explanation: {
-          english: 'Delhi is the specific name of a city, so it is a proper noun.',
-          hindi: 'दिल्ली किसी विशेष शहर का नाम है, इसलिए यह व्यक्तिवाचक संज्ञा है।'
-        }
-      }
-    ]
+function resolveCorrectAnswer(value, options) {
+  if (typeof value === 'number' && Number.isInteger(value)) return value;
+  if (typeof value === 'string') {
+    const v = value.trim();
+    if (/^[A-Za-z]$/.test(v)) return v.toUpperCase().charCodeAt(0) - 65;
+    if (/^\d+$/.test(v)) return Number(v);
+    return options.findIndex(x => String(x).trim() === v);
   }
-];
-
-function extractLanguageValue(value, language = 'english') {
-  if (value && typeof value === 'object' && !Array.isArray(value)) {
-    return String(
-      value[language] ??
-      value[language === 'english' ? 'en' : 'hi'] ??
-      value.english ??
-      value.hindi ??
-      ''
-    ).trim();
-  }
-  return String(value ?? '').trim();
+  return NaN;
 }
 
-function normalizeQuestionForValidation(q, questionNumber) {
-  if (!q || typeof q !== 'object' || Array.isArray(q)) {
-    throw new Error(`question ${questionNumber}: invalid question object.`);
+function normalizeQuestionForValidation(q) {
+  if (!q || typeof q !== 'object') throw new Error('invalid question object.');
+
+  const questionEnglish = q.question && typeof q.question === 'object'
+    ? String(q.question.english || '').trim()
+    : String(q.question || '').trim();
+  const questionHindi = q.question && typeof q.question === 'object'
+    ? String(q.question.hindi || '').trim()
+    : String(q.question_hindi || '').trim();
+
+  const englishOptions = q.options && !Array.isArray(q.options) && typeof q.options === 'object'
+    ? q.options.english
+    : q.options;
+  const hindiOptions = q.options && !Array.isArray(q.options) && typeof q.options === 'object'
+    ? q.options.hindi
+    : q.options_hindi;
+
+  if (!questionEnglish && !questionHindi) throw new Error('question text is empty.');
+  if (!Array.isArray(englishOptions) || englishOptions.length !== 4) {
+    throw new Error('exactly four English options are required.');
+  }
+  if (englishOptions.some(x => !String(x ?? '').trim())) throw new Error('English options cannot be empty.');
+
+  const normalizedEnglish = englishOptions.map(x => String(x).trim().toLowerCase());
+  if (new Set(normalizedEnglish).size !== normalizedEnglish.length) throw new Error('duplicate English options are not allowed.');
+
+  const bilingual = Array.isArray(hindiOptions) || Boolean(questionHindi);
+  if (bilingual) {
+    if (!questionHindi) throw new Error('Hindi question is required for bilingual content.');
+    if (!Array.isArray(hindiOptions) || hindiOptions.length !== 4) throw new Error('exactly four Hindi options are required.');
+    if (hindiOptions.some(x => !String(x ?? '').trim())) throw new Error('Hindi options cannot be empty.');
+    const normalizedHindi = hindiOptions.map(x => String(x).trim().toLowerCase());
+    if (new Set(normalizedHindi).size !== normalizedHindi.length) throw new Error('duplicate Hindi options are not allowed.');
   }
 
-  const englishQuestion = extractLanguageValue(q.question, 'english');
-  const hindiQuestion = extractLanguageValue(q.question_hindi, 'hindi') || extractLanguageValue(q.question, 'hindi');
-  if (!englishQuestion && !hindiQuestion) {
-    throw new Error(`question ${questionNumber}: question text is empty.`);
-  }
-
-  let englishOptions = [];
-  let hindiOptions = [];
-
-  if (q.options && typeof q.options === 'object' && !Array.isArray(q.options)) {
-    englishOptions = Array.isArray(q.options.english) ? q.options.english : (Array.isArray(q.options.en) ? q.options.en : []);
-    hindiOptions = Array.isArray(q.options.hindi) ? q.options.hindi : (Array.isArray(q.options.hi) ? q.options.hi : []);
-  } else if (Array.isArray(q.options)) {
-    englishOptions = q.options;
-  }
-
-  if (Array.isArray(q.options_hindi)) hindiOptions = q.options_hindi;
-
-  if (Array.isArray(q.options_bilingual) && q.options_bilingual.length) {
-    englishOptions = q.options_bilingual.map(x => extractLanguageValue(x, 'english'));
-    hindiOptions = q.options_bilingual.map(x => extractLanguageValue(x, 'hindi'));
-  }
-
-  if (!englishOptions.length && hindiOptions.length) englishOptions = [...hindiOptions];
-  if (!hindiOptions.length && englishOptions.length) hindiOptions = [...englishOptions];
-
-  if (englishOptions.length !== 4 || hindiOptions.length !== 4) {
-    throw new Error(`question ${questionNumber}: exactly four options are required.`);
-  }
-
-  const cleanEnglish = englishOptions.map(x => String(x ?? '').trim());
-  const cleanHindi = hindiOptions.map(x => String(x ?? '').trim());
-
-  if (cleanEnglish.some(x => !x) || cleanHindi.some(x => !x)) {
-    throw new Error(`question ${questionNumber}: options cannot be empty.`);
-  }
-
-  const duplicate = values => {
-    const normalized = values.map(x => x.toLowerCase().replace(/\s+/g, ' ').trim());
-    return new Set(normalized).size !== normalized.length;
-  };
-
-  if (duplicate(cleanEnglish)) throw new Error(`question ${questionNumber}: duplicate English options are not allowed.`);
-  if (duplicate(cleanHindi)) throw new Error(`question ${questionNumber}: duplicate Hindi options are not allowed.`);
-
-  const rawAnswer = q.correct_answer ?? q.answer;
-  let correct = NaN;
-
-  if (typeof rawAnswer === 'number' && Number.isInteger(rawAnswer)) {
-    correct = rawAnswer;
-  } else if (typeof rawAnswer === 'string') {
-    const value = rawAnswer.trim();
-    if (/^[A-D]$/i.test(value)) correct = value.toUpperCase().charCodeAt(0) - 65;
-    else if (/^\d+$/.test(value)) correct = Number(value);
-    else {
-      correct = cleanEnglish.findIndex(x => x.toLowerCase() === value.toLowerCase());
-      if (correct < 0) correct = cleanHindi.findIndex(x => x.toLowerCase() === value.toLowerCase());
-    }
-  }
-
+  const correct = resolveCorrectAnswer(q.correct_answer ?? q.answer, englishOptions);
   if (!Number.isInteger(correct) || correct < 0 || correct >= 4) {
-    throw new Error(`question ${questionNumber}: correct_answer must be 0–3, A/B/C/D, or an exact option.`);
+    throw new Error('correct_answer must be 0–3, A/B/C/D, or an exact English option.');
   }
 
-  return {
-    ...q,
-    question: englishQuestion || hindiQuestion,
-    question_hindi: hindiQuestion || englishQuestion,
-    question_i18n: {english: englishQuestion || hindiQuestion, hindi: hindiQuestion || englishQuestion},
-    options: cleanEnglish,
-    options_hindi: cleanHindi,
-    options_bilingual: cleanEnglish.map((x, i) => ({english: x, hindi: cleanHindi[i]})),
-    correct_answer: correct,
-    explanation: extractLanguageValue(q.explanation, 'english') || extractLanguageValue(q.explanation_hindi, 'english'),
-    explanation_hindi: extractLanguageValue(q.explanation, 'hindi') || extractLanguageValue(q.explanation_hindi, 'hindi'),
-  };
-}
-
-function validateQuizBatch(quizzes, sourceOffset = 0) {
-  const valid = [];
-  const failures = [];
-  const titles = new Set();
-
-  quizzes.forEach((quiz, index) => {
-    const sourceIndex = sourceOffset + index + 1;
-    try {
-      if (!quiz || typeof quiz !== 'object' || Array.isArray(quiz)) throw new Error('Quiz must be a JSON object.');
-      const title = String(quiz.title || quiz.name || '').trim();
-      if (!title) throw new Error('title is required.');
-      const titleKey = title.toLowerCase();
-      if (titles.has(titleKey)) throw new Error(`duplicate title '${title}'.`);
-      titles.add(titleKey);
-      if (!Array.isArray(quiz.questions) || quiz.questions.length < 1) throw new Error('questions must contain at least one question.');
-
-      const normalizedQuestions = quiz.questions.map((q, qi) => normalizeQuestionForValidation(q, qi + 1));
-      valid.push({...quiz, questions: normalizedQuestions, _bulk_source_index: sourceIndex});
-    } catch (error) {
-      failures.push({source_index: sourceIndex, title: String(quiz?.title || quiz?.name || ''), error: error.message || 'Invalid quiz.'});
-    }
-  });
-
-  return {valid, failures};
+  return {englishOptions, hindiOptions, bilingual, correct};
 }
 
 function validateQuizPayload(payload) {
   const quizzes = asQuizList(payload);
-  if (!quizzes.length) throw new Error('Paste one quiz object, an array of quiz objects, or {"quizzes":[...]}.');
-  const result = validateQuizBatch(quizzes, 0);
-  if (result.failures.length) throw new Error(result.failures.map(x => `Quiz ${x.source_index} (${x.title}): ${x.error}`).join('\n'));
-  return result.valid;
+  if (!quizzes.length) throw new Error('Paste one quiz object, an array of quiz objects, or {"quizzes":[...]}.' );
+
+  const titles = new Set();
+  quizzes.forEach((quiz, qi) => {
+    const n = qi + 1;
+    if (!quiz || typeof quiz !== 'object' || Array.isArray(quiz)) throw new Error(`Quiz ${n} must be a JSON object.`);
+    const title = String(quiz.title || quiz.name || '').trim();
+    if (!title) throw new Error(`Quiz ${n}: title is required.`);
+    const key = title.toLowerCase();
+    if (titles.has(key)) throw new Error(`Quiz ${n}: duplicate title '${title}'.`);
+    titles.add(key);
+    if (!Array.isArray(quiz.questions) || quiz.questions.length < 1) throw new Error(`Quiz ${n} (${title}): questions must contain at least one question.`);
+    quiz.questions.forEach((q, qi2) => {
+      const qn = qi2 + 1;
+      try { normalizeQuestionForValidation(q); }
+      catch (e) { throw new Error(`Quiz ${n}, question ${qn}: ${e.message}`); }
+    });
+  });
+  return quizzes;
 }
 
 function taxonomyFields(taxonomy, categoryIds, subcategoryIds) {
@@ -400,15 +316,14 @@ export default function AdminBulkContentScreen({onBack}) {
       setQuizFile(selected);
       setResult(null);
       setFilePreview({name: selected.name, size: Number(selected.size || 0), analyzing: true});
-      const selectedSize = Number(selected.size || 0);
       const analysis = await analyzeQuizFileInWorker(selected.file ? selected : await readPickedFile(selected));
-      setFilePreview({name: selected.name, size: selectedSize, count: analysis.count, questions: analysis.questions, analyzing: false});
+      const size = Number(selected.size || 0);
+      setFilePreview({name: selected.name, size, count: analysis.count, questions: analysis.questions, analyzing: false});
       // Never render a large uploaded JSON file inside the TextInput.
-      if (selectedSize > 0 && selectedSize <= 512 * 1024) {
-        const smallText = selected.file && typeof selected.file.text === 'function'
-          ? await selected.file.text()
-          : await readPickedFile(selected);
-        setQuizJson(smallText);
+      // Small files may be loaded into the editor for inspection.
+      if (size > 0 && size <= 512 * 1024) {
+        const text = await readPickedFile(selected);
+        setQuizJson(text);
       }
     } catch (e) {
       setQuizFile(null);
@@ -684,16 +599,14 @@ export default function AdminBulkContentScreen({onBack}) {
             <View style={{flexDirection: 'row', gap: 8, flexWrap: 'wrap'}}>
               <Button title={busy ? 'Processing…' : 'Create Quiz Drafts'} onPress={createQuiz} disabled={busy || !ready} />
               <Button title={busy ? 'Uploading…' : 'Upload JSON & Create'} variant="secondary" onPress={uploadQuiz} disabled={busy || !quizFile || !ready} />
-              <Button title="Reset Single-language Sample" variant="secondary" onPress={() => {setQuizFile(null); setFilePreview(null); setQuizJson(JSON.stringify(SAMPLE_MULTI, null, 2));}} />
-              <Button title="Load Bilingual Sample" variant="secondary" onPress={() => {setQuizFile(null); setFilePreview(null); setQuizJson(JSON.stringify(SAMPLE_BILINGUAL, null, 2));}} />
+              <Button title="Reset Sample" variant="secondary" onPress={() => {setQuizFile(null); setFilePreview(null); setQuizJson(JSON.stringify(SAMPLE_MULTI, null, 2));}} />
               {!quizFile && <Badge tone={preview.error ? 'red' : 'blue'}>{preview.error ? 'Invalid JSON' : `${preview.count} quiz${preview.count === 1 ? '' : 'zes'} · ${preview.questions} questions`}</Badge>}
             </View>
           </Card>
 
           <Card style={{backgroundColor: '#F8F9FD'}}>
-            <Text style={{fontWeight: '900', color: colors.navy}}>JSON formats & samples</Text>
-            <Text style={{fontWeight: '800', color: colors.navy, marginTop: 10}}>1. Single-language</Text>
-            <Text style={{fontFamily: 'monospace', fontSize: 10, lineHeight: 16, marginTop: 6}}>{`[
+            <Text style={{fontWeight: '900', color: colors.navy}}>JSON format</Text>
+            <Text style={{fontFamily: 'monospace', fontSize: 10, lineHeight: 16, marginTop: 8}}>{`[
   {
     "title": "English Grammar - Noun - Set 1",
     "subject": "English",
@@ -713,39 +626,10 @@ export default function AdminBulkContentScreen({onBack}) {
       }
     ]
   }
-]`}</Text>
-            <Text style={{fontWeight: '800', color: colors.navy, marginTop: 14}}>2. Bilingual English + Hindi</Text>
-            <Text style={{fontFamily: 'monospace', fontSize: 10, lineHeight: 16, marginTop: 6}}>{`[
-  {
-    "title": "English Grammar - Noun - Bilingual Set 1",
-    "subject": "English",
-    "topic": "Noun",
-    "questions": [
-      {
-        "question": {
-          "english": "Which of the following is a proper noun?",
-          "hindi": "निम्नलिखित में से कौन-सा व्यक्तिवाचक संज्ञा है?"
-        },
-        "options": {
-          "english": ["city", "country", "Delhi", "river"],
-          "hindi": ["शहर", "देश", "दिल्ली", "नदी"]
-        },
-        "correct_answer": 2,
-        "explanation": {
-          "english": "Delhi is a proper noun.",
-          "hindi": "दिल्ली व्यक्तिवाचक संज्ञा है।"
-        }
-      }
-    ]
-  }
-]`}</Text>
-            <Text style={{fontWeight: '800', color: colors.navy, marginTop: 14}}>3. Legacy bilingual</Text>
-            <Text style={{fontFamily: 'monospace', fontSize: 10, lineHeight: 16, marginTop: 6}}>{`"question": "English question",
-"question_hindi": "हिंदी प्रश्न",
-"options": ["A", "B", "C", "D"],
-"options_hindi": ["क", "ख", "ग", "घ"]`}</Text>
+]`}
+            </Text>
             <Text style={{color: colors.muted, marginTop: 10, lineHeight: 18}}>
-              Exactly 4 options are required. correct_answer is zero-based (0–3) or A/B/C/D. Single-language data is accepted and mirrored for Hindi storage. Bilingual data preserves both languages. Category/subcategory are selected above, not inside each quiz. Large files are processed in batches of 50.
+              Required: title, subject, questions, exactly 4 unique options per question, and a zero-based correct_answer (0–3). Category/subcategory are selected above and are NOT required inside the JSON. Files larger than 50 quizzes are automatically sent as 50-quiz batches.
             </Text>
           </Card>
         </>
