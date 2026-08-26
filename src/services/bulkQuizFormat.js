@@ -45,6 +45,24 @@ function four(values,label) {
   if(values.some(x=>!String(x??'').trim())) throw new Error(`${label} options cannot be empty.`);
   const n=values.map(x=>String(x).trim().toLocaleLowerCase()); if(new Set(n).size!==n.length) throw new Error(`duplicate ${label} options are not allowed.`);
 }
+export function normalizeQuizForBackend(quiz) {
+  if (!quiz || typeof quiz !== 'object' || Array.isArray(quiz)) {
+    throw new Error('Quiz must be a JSON object.');
+  }
+
+  return {
+    ...quiz,
+    title: String(quiz.title ?? quiz.name ?? '').trim(),
+    subject: String(quiz.subject ?? '').trim(),
+    topic: String(quiz.topic ?? '').trim(),
+    description: quiz.description ?? '',
+    passing_percentage: quiz.passing_percentage ?? 60,
+    duration_minutes: quiz.duration_minutes ?? 20,
+    questions: Array.isArray(quiz.questions)
+      ? quiz.questions.map(normalizeQuestionForBackend)
+      : [],
+  };
+}
 export function normalizeQuestionForBackend(q) {
   const qt=getQuestionTexts(q), op=getOptionArrays(q); let en=[...op.english], hi=[...op.hindi];
   if(!en.length) en=[...hi]; if(!hi.length) hi=[...en];

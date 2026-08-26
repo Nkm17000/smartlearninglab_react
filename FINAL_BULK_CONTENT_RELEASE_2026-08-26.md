@@ -63,3 +63,8 @@ The Admin Bulk Content screen also provides Load/Download sample actions.
 - Canonical `/admin/bulk/quiz`, `/admin/bulk/quiz-batch`, and `/admin/bulk/course-pdf` routes remain in `app/api/bulk.py`.
 
 A complete browser/Render deployment test still requires the production environment and MongoDB/R2 credentials; those credentials are not part of this source package.
+
+
+## Hotfix — normalizeQuizForBackend reference
+
+The admin bulk screen referenced `normalizeQuizForBackend` while only importing `normalizeQuestionForBackend`. The shared formatter now exports `normalizeQuizForBackend`, and the screen imports it explicitly. This fixes the runtime error `normalizeQuizForBackend is not defined` before the batch API request.

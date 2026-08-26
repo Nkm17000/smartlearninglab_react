@@ -8,6 +8,7 @@ import {colors} from '../../theme';
 import {
   asQuizList,
   normalizeQuestionForBackend,
+  normalizeQuizForBackend,
   validateQuizPayload,
   validateQuizBatch,
   taxonomyFields,
