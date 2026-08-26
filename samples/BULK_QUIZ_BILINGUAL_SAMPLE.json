@@ -1,0 +1,40 @@
+[
+  {
+    "title": "General Science - Motion - Set 1",
+    "subject": "General Science",
+    "topic": "Motion",
+    "description": "English + Hindi bilingual practice test",
+    "passing_percentage": 60,
+    "duration_minutes": 20,
+    "questions": [
+      {
+        "question": {
+          "english": "A body moving with constant velocity has what type of acceleration?",
+          "hindi": "नियत वेग से गतिमान पिंड का त्वरण किस प्रकार का होता है?"
+        },
+        "options": {
+          "english": [
+            "Zero",
+            "Constant positive",
+            "Constant negative",
+            "Variable"
+          ],
+          "hindi": [
+            "शून्य",
+            "नियत धनात्मक",
+            "नियत ऋणात्मक",
+            "परिवर्ती"
+          ]
+        },
+        "correct_answer": 0,
+        "difficulty": "medium",
+        "marks": 1,
+        "negative_marks": 0,
+        "explanation": {
+          "english": "Constant velocity means acceleration is zero.",
+          "hindi": "नियत वेग का अर्थ है कि त्वरण शून्य है।"
+        }
+      }
+    ]
+  }
+]
