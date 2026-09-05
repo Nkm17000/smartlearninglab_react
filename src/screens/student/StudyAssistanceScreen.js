@@ -387,7 +387,7 @@ export default function StudyAssistanceScreen({openCourse, openLesson, openRoute
         <Field value={readText} onChangeText={setReadText} placeholder="Paste or type study text here…" multiline/>
         <View style={{flexDirection: 'row', gap: 8, flexWrap: 'wrap'}}>
           <ReadAloud text={selectedReadText}/>
-          {selectedReadText && <Button title="Use current lesson" variant="soft" onPress={() => setReadText(selectedReadText)}/>} 
+          {selectedReadText && <Button title="Use current lesson" variant="soft" onPress={() => setReadText(selectedReadText)}/>}
         </View>
         {Platform.OS !== 'web' && <Text style={{fontFamily: ff, fontSize: 10, color: colors.muted, marginTop: 8}}>Native speech can be added with the optional Expo Speech package; this version keeps dependencies unchanged.</Text>}
       </Card>

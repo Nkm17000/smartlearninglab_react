@@ -1,1 +1,0 @@
-export const enterpriseTheme={colors:{primary:'#2563EB',accent:'#7C3AED',success:'#16A34A',warning:'#D97706',danger:'#DC2626',background:'#F5F7FB',surface:'#FFFFFF',text:'#111827',muted:'#6B7280',border:'#E5E7EB'},radius:{sm:10,md:16,lg:22,xl:28},spacing:{xs:6,sm:10,md:16,lg:24,xl:32}};

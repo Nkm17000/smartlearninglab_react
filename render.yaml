@@ -1,9 +1,0 @@
-services:
-  - type: web
-    name: smartlearninglab-react
-    runtime: static
-    buildCommand: npm ci && npx expo export --platform web
-    staticPublishPath: dist
-    envVars:
-      - key: EXPO_PUBLIC_API_BASE_URL
-        sync: false

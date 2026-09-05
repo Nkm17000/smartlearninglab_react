@@ -49,7 +49,7 @@ export function Button({ title, onPress, variant='primary', disabled=false, styl
 }
 
 export function IconButton({ label, onPress, danger=false }) {
-  return <Pressable onPress={onPress} style={({pressed})=>[s.iconButton,{backgroundColor:danger?'#FFF0F6':'#F7F7FD',borderColor:danger?'#FFD4DE':colors.border,opacity: pressed ? 0.75 : 1}]}> 
+  return <Pressable onPress={onPress} style={({pressed})=>[s.iconButton,{backgroundColor:danger?'#FFF0F6':'#F7F7FD',borderColor:danger?'#FFD4DE':colors.border,opacity: pressed ? 0.75 : 1}]}>
     <Text style={{fontFamily:ff,fontSize:13,fontWeight:'800',color:danger?colors.danger:colors.text}}>{label}</Text>
   </Pressable>;
 }
